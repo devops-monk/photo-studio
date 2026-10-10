@@ -9,16 +9,25 @@ use crate::image::{Image, Mask};
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ShapeKind {
     Rectangle,
-    RoundedRect { radius: f32 },
+    RoundedRect {
+        radius: f32,
+    },
     Ellipse,
     Line,
-    Polygon { sides: u32 },
-    Star { points: u32, inner: f32 },
+    Polygon {
+        sides: u32,
+    },
+    Star {
+        points: u32,
+        inner: f32,
+    },
     Triangle,
     Heart,
     Arrow,
     SpeechBubble,
     Checkmark,
+    /// Drawn with the Pen tool; the outline lives in `ShapeLayer::path`.
+    Custom,
 }
 
 impl ShapeKind {
@@ -35,6 +44,7 @@ impl ShapeKind {
             Self::Arrow => "Arrow",
             Self::SpeechBubble => "Speech Bubble",
             Self::Checkmark => "Checkmark",
+            Self::Custom => "Path",
         }
     }
 }
@@ -49,6 +59,8 @@ pub struct ShapeLayer {
     pub stroke: Option<Rgba>,
     pub stroke_width: f32,
     pub dashed: bool,
+    #[serde(default)]
+    pub path: Option<crate::path::BezierPath>,
 }
 
 fn color(c: Rgba) -> tiny_skia::Color {
@@ -160,6 +172,7 @@ pub fn path(kind: ShapeKind, a: (f32, f32), b: (f32, f32)) -> Option<tiny_skia::
             pb.cubic_to(x0, y0 + r - k, x0 + r - k, y0, x0 + r, y0);
             pb.close();
         }
+        ShapeKind::Custom => return None,
         ShapeKind::Checkmark => {
             let (w, h) = (x1 - x0, y1 - y0);
             let p = |u: f32, v: f32| (x0 + u * w, y0 + v * h);
@@ -199,7 +212,15 @@ pub fn render(s: &ShapeLayer, w: u32, h: u32) -> Image {
     let Some(mut pm) = Pixmap::new(w.max(1), h.max(1)) else {
         return Image::new(w, h);
     };
-    if let Some(p) = path(s.kind, s.from, s.to) {
+    let outline = match (&s.kind, &s.path) {
+        (ShapeKind::Custom, Some(bp)) => {
+            let mut closed = bp.clone();
+            closed.closed = bp.closed || s.fill.is_some();
+            closed.to_skia()
+        }
+        _ => path(s.kind, s.from, s.to),
+    };
+    if let Some(p) = outline {
         let mut paint = Paint { anti_alias: true, ..Default::default() };
         if let Some(f) = s.fill.filter(|_| s.kind != ShapeKind::Line) {
             paint.set_color(color(f));
@@ -259,6 +280,7 @@ mod tests {
             stroke: None,
             stroke_width: 1.0,
             dashed: false,
+            path: None,
         };
         let img = render(&s, 10, 10);
         assert_eq!(img.get(5, 5), Rgba::rgb(255, 0, 0));

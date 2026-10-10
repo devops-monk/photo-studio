@@ -39,6 +39,7 @@ pub fn dock(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 if !app.docs.is_empty() {
                     card(ui, "adj", "Adjustments", true, |ui| adjustments(ui, actions));
                     properties(app, ui);
+                    card(ui, "paths", "Paths", false, |ui| paths_panel(app, ui, actions));
                     card(ui, "history", "History", false, |ui| history(app, ui));
                 }
             });
@@ -478,6 +479,41 @@ fn properties(app: &mut App, ui: &mut Ui) {
         tab.invalidate_all();
         app.props_pending = Some((now, label));
     }
+}
+
+fn paths_panel(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
+    let t = Tokens::get(ui.ctx());
+    let Some(tab) = app.tab() else { return };
+    let names: Vec<String> = tab.doc.paths.iter().map(|p| p.name.clone()).collect();
+    if names.is_empty() {
+        label_dim(ui, "Draw with the Pen tool (P) to make a path.");
+        return;
+    }
+    for (i, n) in names.iter().enumerate() {
+        let sel = app.active_path == Some(i);
+        let text = egui::RichText::new(format!("{}  {}", ph::BEZIER_CURVE, n)).color(t.text);
+        if ui.add_sized([ui.available_width(), 24.0], egui::Button::selectable(sel, text)).clicked() {
+            app.active_path = if sel { None } else { Some(i) };
+        }
+    }
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        if small_button(ui, ph::SELECTION, "Load path as a selection (⌘↩)").clicked() {
+            actions.push(Action::PathToSelection);
+        }
+        if small_button(ui, ph::PAINT_BUCKET, "Fill path with the foreground color").clicked() {
+            actions.push(Action::FillPath);
+        }
+        if small_button(ui, ph::PAINT_BRUSH, "Stroke path with the foreground color").clicked() {
+            actions.push(Action::StrokePath);
+        }
+        if small_button(ui, ph::POLYGON, "Make a shape layer from the path").clicked() {
+            actions.push(Action::PathToShape);
+        }
+        if small_button(ui, ph::TRASH, "Delete path").clicked() {
+            actions.push(Action::DeletePath);
+        }
+    });
 }
 
 fn history(app: &mut App, ui: &mut Ui) {

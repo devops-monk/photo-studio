@@ -106,6 +106,8 @@ pub struct App {
     pub show_right_panel: bool,
     /// Edit › Define Pattern.
     pub custom_pattern: Option<Image>,
+    /// The path selected in the Paths panel.
+    pub active_path: Option<usize>,
 }
 
 impl App {
@@ -139,6 +141,7 @@ impl App {
             logo: crate::welcome::LogoAnim::default(),
             show_right_panel: true,
             custom_pattern: None,
+            active_path: None,
         };
         app.prefs.recent.retain(|p| p.exists());
         for f in files {
@@ -628,6 +631,51 @@ impl App {
                 });
             }
             Action::Preferences => self.dialog = Some(Dialog::Preferences),
+            Action::PathToSelection
+            | Action::FillPath
+            | Action::StrokePath
+            | Action::PathToShape
+            | Action::DeletePath => {
+                let Some(pi) = self.active_path else {
+                    self.notify(ctx, "Select a path in the Paths panel first");
+                    return;
+                };
+                let Some(np) = self.tab().and_then(|t| t.doc.paths.get(pi)).cloned() else { return };
+                let (fg, bg, width) = (self.fg, self.bg, self.opts.tip.size.clamp(1.0, 50.0));
+                match a {
+                    Action::PathToSelection => self.edit("Make Selection", |d| {
+                        let m = np.path.to_mask(d.width, d.height);
+                        d.set_selection(m);
+                    }),
+                    Action::FillPath => self.edit_pixels(ctx, "Fill Path", |img, _| {
+                        let m = np.path.to_mask(img.width(), img.height());
+                        studio_core::paint::fill_region(img, &m, fg, studio_core::BlendMode::Normal, 1.0);
+                    }),
+                    Action::StrokePath => self.edit_pixels(ctx, "Stroke Path", |img, _| {
+                        let m = np.path.stroke_mask(width, img.width(), img.height());
+                        studio_core::paint::fill_region(img, &m, fg, studio_core::BlendMode::Normal, 1.0);
+                    }),
+                    Action::PathToShape => self.edit("Shape Layer from Path", |d| {
+                        let shape = studio_core::shape::ShapeLayer {
+                            kind: studio_core::shape::ShapeKind::Custom,
+                            from: (0.0, 0.0),
+                            to: (0.0, 0.0),
+                            fill: Some(fg),
+                            stroke: (!np.path.closed).then_some(bg),
+                            stroke_width: 3.0,
+                            dashed: false,
+                            path: Some(np.path.clone()),
+                        };
+                        d.add_layer_of_kind(&np.name, LayerKind::Shape(shape));
+                    }),
+                    _ => {
+                        self.edit("Delete Path", |d| {
+                            d.paths.remove(pi);
+                        });
+                        self.active_path = None;
+                    }
+                }
+            }
             Action::DefinePattern => {
                 let Some(tab) = self.tab() else { return };
                 let Some(b) = tab.doc.selection.as_ref().and_then(|m| m.bounds()) else {

@@ -570,3 +570,53 @@ fn command_palette_finds_and_runs() {
     assert!(h.state().dialog.is_none());
     assert_eq!(h.state().tab().unwrap().doc.layers.len(), 2, "New Layer ran");
 }
+
+#[test]
+fn pen_path_to_selection_shape_and_edit() {
+    let mut h = harness();
+    h.state_mut().set_tool(Tool::Pen);
+    for q in [(100.0, 100.0), (300.0, 100.0), (300.0, 250.0), (100.0, 250.0), (100.0, 100.0)] {
+        click(&mut h, q);
+    }
+    {
+        let doc = &h.state().tab().unwrap().doc;
+        assert_eq!(doc.paths.len(), 1, "closing click stored the path");
+        assert!(doc.paths[0].path.closed);
+        assert_eq!(doc.paths[0].path.anchors.len(), 4);
+    }
+    // ⌘↩ makes a selection from it.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+    h.run_steps(2);
+    let b = h.state().tab().unwrap().doc.selection.as_ref().and_then(|m| m.bounds()).expect("selection");
+    assert!((b.x - 100).abs() <= 1 && (b.w as i32 - 200).abs() <= 2, "{b:?}");
+
+    // Direct Selection drags an anchor.
+    h.state_mut().set_tool(Tool::DirectSelect);
+    drag(&mut h, (300.0, 250.0), (350.0, 280.0), Modifiers::NONE);
+    let a = h.state().tab().unwrap().doc.paths[0].path.anchors[2].p;
+    assert!((a.0 - 350.0).abs() < 2.0 && (a.1 - 280.0).abs() < 2.0, "{a:?}");
+
+    // Shape layer from the path.
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, crate::actions::Action::PathToShape);
+    h.run_steps(2);
+    let doc = &h.state().tab().unwrap().doc;
+    let l = doc.layers.last().unwrap();
+    assert!(matches!(l.kind, studio_core::LayerKind::Shape(_)));
+    assert!(l.pixels.get(200, 175).a() > 200, "filled inside");
+}
+
+#[test]
+fn pen_drag_makes_a_curve() {
+    let mut h = harness();
+    h.state_mut().set_tool(Tool::Pen);
+    click(&mut h, (100.0, 200.0));
+    drag(&mut h, (300.0, 200.0), (300.0, 100.0), Modifiers::NONE);
+    h.key_press(Key::Enter);
+    h.run_steps(2);
+    let p = &h.state().tab().unwrap().doc.paths[0].path;
+    assert!(!p.closed);
+    assert!(p.anchors[0].is_corner());
+    assert!(!p.anchors[1].is_corner(), "dragging made a smooth anchor");
+    assert!((p.anchors[1].h_out.1 - 100.0).abs() < 2.0);
+}

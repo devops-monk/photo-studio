@@ -40,6 +40,8 @@ pub enum Tool {
     Burn,
     Sponge,
     Text,
+    Pen,
+    DirectSelect,
     Rectangle,
     RoundedRect,
     Ellipse,
@@ -72,6 +74,7 @@ pub const GROUPS: &[&[Tool]] = &[
     &[Tool::Blur, Tool::Sharpen, Tool::Smudge],
     &[Tool::Dodge, Tool::Burn, Tool::Sponge],
     &[Tool::Text],
+    &[Tool::Pen, Tool::DirectSelect],
     &[
         Tool::Rectangle,
         Tool::RoundedRect,
@@ -127,6 +130,8 @@ impl Tool {
             Self::Burn => "Burn",
             Self::Sponge => "Sponge",
             Self::Text => "Type",
+            Self::Pen => "Pen",
+            Self::DirectSelect => "Direct Selection",
             Self::Rectangle => "Rectangle",
             Self::RoundedRect => "Rounded Rectangle",
             Self::Ellipse => "Ellipse",
@@ -174,6 +179,8 @@ impl Tool {
             Self::Burn => ph::FIRE,
             Self::Sponge => ph::DROP_HALF,
             Self::Text => ph::TEXT_T,
+            Self::Pen => ph::PEN_NIB,
+            Self::DirectSelect => ph::CURSOR,
             Self::Rectangle => ph::RECTANGLE,
             Self::RoundedRect => ph::SQUARE,
             Self::Ellipse => ph::CIRCLE,
@@ -204,6 +211,8 @@ impl Tool {
             Self::Blur | Self::Sharpen | Self::Smudge => Key::R,
             Self::Dodge | Self::Burn | Self::Sponge => Key::O,
             Self::Text => Key::T,
+            Self::Pen => Key::P,
+            Self::DirectSelect => Key::A,
             Self::Rectangle
             | Self::RoundedRect
             | Self::Ellipse
@@ -291,6 +300,8 @@ impl Tool {
             Self::Blur | Self::Sharpen | Self::Smudge => "Paint to soften, sharpen or smear",
             Self::Dodge | Self::Burn | Self::Sponge => "Paint to lighten, darken or change saturation",
             Self::Text => "Click to add text, or click existing text to edit it",
+            Self::Pen => "Click for corners, drag for curves · click the first point to close · Enter finishes",
+            Self::DirectSelect => "Drag anchors and handles of the selected path",
             Self::Rectangle
             | Self::RoundedRect
             | Self::Ellipse

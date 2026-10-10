@@ -17,6 +17,7 @@ pub mod image;
 pub mod io;
 pub mod layer;
 pub mod paint;
+pub mod path;
 pub mod select;
 pub mod shape;
 pub mod styles;

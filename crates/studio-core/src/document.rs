@@ -26,6 +26,7 @@ pub struct Document {
     /// Pixels per inch, for print sizes.
     pub ppi: f32,
     pub guides: Vec<Guide>,
+    pub paths: Vec<crate::path::NamedPath>,
 }
 
 /// Everything history needs to restore.
@@ -37,6 +38,7 @@ pub struct DocState {
     active: usize,
     selection: Option<Mask>,
     guides: Vec<Guide>,
+    paths: Vec<crate::path::NamedPath>,
 }
 
 /// Where existing pixels sit when the canvas grows or shrinks.
@@ -102,6 +104,7 @@ impl Document {
             next_id: 1,
             ppi: 72.0,
             guides: Vec::new(),
+            paths: Vec::new(),
         };
         let (name, img) = match bg {
             Some(c) => ("Background", Image::filled(width, height, c)),
@@ -122,6 +125,7 @@ impl Document {
             next_id: 1,
             ppi: 72.0,
             guides: Vec::new(),
+            paths: Vec::new(),
         };
         let id = doc.new_id();
         doc.layers.push(Layer::raster(id, "Background", img));
@@ -146,6 +150,7 @@ impl Document {
             active: self.active,
             selection: self.selection.clone(),
             guides: self.guides.clone(),
+            paths: self.paths.clone(),
         }
     }
 
@@ -156,6 +161,7 @@ impl Document {
         self.active = s.active.min(self.layers.len().saturating_sub(1));
         self.selection = s.selection.clone();
         self.guides = s.guides.clone();
+        self.paths = s.paths.clone();
         if let Some(max) = self.layers.iter().map(|l| l.id).max() {
             self.next_id = self.next_id.max(max + 1);
         }
@@ -604,14 +610,23 @@ impl Document {
                 for g in &mut self.guides {
                     g.pos += if g.horizontal { dy } else { dx };
                 }
+                for p in &mut self.paths {
+                    p.path.translate(dx, dy);
+                }
             }
             Params::Scale(sx, sy) => {
                 for g in &mut self.guides {
                     g.pos *= if g.horizontal { sy } else { sx };
                 }
+                for p in &mut self.paths {
+                    p.path.map(|q| (q.0 * sx, q.1 * sy));
+                }
             }
-            // Guides don't survive rotation meaningfully.
-            Params::Rasterize => self.guides.clear(),
+            // Guides and paths don't survive rotation meaningfully.
+            Params::Rasterize => {
+                self.guides.clear();
+                self.paths.clear();
+            }
         }
         self.width = nw;
         self.height = nh;

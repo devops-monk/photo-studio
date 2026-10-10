@@ -147,6 +147,10 @@ pub struct CanvasState {
     pub ruler: Option<((f32, f32), (f32, f32))>,
     /// A guide being dragged: (horizontal, index of an existing guide, current position).
     guide_drag: Option<(bool, Option<usize>, f32)>,
+    /// Path being drawn with the Pen tool.
+    pub pen: Option<studio_core::path::BezierPath>,
+    /// Direct Selection drag: (path index, anchor index, which point: 0 anchor, 1 in, 2 out).
+    direct: Option<(usize, usize, u8)>,
     last_paint: Option<(f32, f32)>,
 }
 
@@ -164,6 +168,8 @@ impl Default for CanvasState {
             hover: None,
             ruler: None,
             guide_drag: None,
+            pen: None,
+            direct: None,
             last_paint: None,
         }
     }
@@ -694,6 +700,83 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                 }
             }
         }
+        Tool::Pen => {
+            use studio_core::path::{Anchor, BezierPath};
+            if primary_pressed {
+                let first_hit = app.cv.pen.as_ref().is_some_and(|bp| {
+                    bp.anchors.len() >= 2 && view.to_screen(bp.anchors[0].p).distance(view.to_screen(origin)) < 8.0
+                });
+                if first_hit {
+                    if let Some(mut bp) = app.cv.pen.take() {
+                        bp.closed = true;
+                        finish_pen(app, bp);
+                    }
+                    return;
+                }
+                app.cv.pen.get_or_insert_with(BezierPath::default).anchors.push(Anchor::corner(origin));
+            }
+            if resp.dragged() {
+                if let Some(a) = app.cv.pen.as_mut().and_then(|bp| bp.anchors.last_mut()) {
+                    if (p.0 - a.p.0).hypot(p.1 - a.p.1) * view.zoom > 2.0 {
+                        *a = Anchor::smooth(a.p, p);
+                    }
+                }
+            }
+        }
+        Tool::DirectSelect => {
+            if resp.drag_started() {
+                let tab = &app.docs[active];
+                let probe = view.to_screen(origin);
+                let mut best: Option<(f32, (usize, usize, u8))> = None;
+                let order: Vec<usize> = match app.active_path {
+                    Some(i) => std::iter::once(i).chain((0..tab.doc.paths.len()).filter(|&j| j != i)).collect(),
+                    None => (0..tab.doc.paths.len()).collect(),
+                };
+                for pi in order {
+                    let Some(np) = tab.doc.paths.get(pi) else { continue };
+                    for (ai, a) in np.path.anchors.iter().enumerate() {
+                        for (k, q) in [(0u8, a.p), (1, a.h_in), (2, a.h_out)] {
+                            let d = view.to_screen(q).distance(probe);
+                            if d < 9.0 && best.is_none_or(|b| d < b.0) {
+                                best = Some((d, (pi, ai, k)));
+                            }
+                        }
+                    }
+                }
+                app.cv.direct = best.map(|b| b.1);
+                if let Some((pi, _, _)) = app.cv.direct {
+                    app.active_path = Some(pi);
+                }
+            }
+            if let Some((pi, ai, k)) = app.cv.direct {
+                if let Some(a) = app.docs[active].doc.paths.get_mut(pi).and_then(|np| np.path.anchors.get_mut(ai)) {
+                    match k {
+                        0 => {
+                            let (dx, dy) = (p.0 - a.p.0, p.1 - a.p.1);
+                            a.p = p;
+                            a.h_in = (a.h_in.0 + dx, a.h_in.1 + dy);
+                            a.h_out = (a.h_out.0 + dx, a.h_out.1 + dy);
+                        }
+                        1 => {
+                            a.h_in = p;
+                            if !mods.alt {
+                                a.h_out = (2.0 * a.p.0 - p.0, 2.0 * a.p.1 - p.1);
+                            }
+                        }
+                        _ => {
+                            a.h_out = p;
+                            if !mods.alt {
+                                a.h_in = (2.0 * a.p.0 - p.0, 2.0 * a.p.1 - p.1);
+                            }
+                        }
+                    }
+                }
+                if resp.drag_stopped() {
+                    app.cv.direct = None;
+                    app.docs[active].commit("Edit Path");
+                }
+            }
+        }
         Tool::MagicEraser => {
             if resp.clicked() {
                 let Some(src) = sample_source(app) else {
@@ -989,6 +1072,7 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                     }),
                     stroke_width: o.stroke_width,
                     dashed: o.dashed,
+                    path: None,
                 };
                 let tab = &mut app.docs[active];
                 tab.doc.add_layer_of_kind(kind.label(), LayerKind::Shape(shape));
@@ -1274,6 +1358,43 @@ fn guides(app: &mut App, ui: &mut Ui, resp: &egui::Response, view: &View, full: 
         }
     }
     true
+}
+
+/// Store a finished Pen path in the document and select it.
+pub fn finish_pen(app: &mut App, bp: studio_core::path::BezierPath) {
+    if bp.anchors.len() < 2 {
+        return;
+    }
+    let Some(tab) = app.tab_mut() else { return };
+    let name = format!("Path {}", tab.doc.paths.len() + 1);
+    tab.doc.paths.push(studio_core::path::NamedPath { name, path: bp });
+    let idx = tab.doc.paths.len() - 1;
+    tab.commit("Pen");
+    app.active_path = Some(idx);
+}
+
+fn draw_path(painter: &egui::Painter, view: &View, bp: &studio_core::path::BezierPath, accent: Color32, edit: bool) {
+    let pts: Vec<Pos2> = bp.flatten(24).iter().map(|q| view.to_screen(*q)).collect();
+    if pts.len() > 1 {
+        painter.add(Shape::line(pts, Stroke::new(1.5, accent)));
+    }
+    for a in &bp.anchors {
+        let c = view.to_screen(a.p);
+        if edit && !a.is_corner() {
+            for h in [a.h_in, a.h_out] {
+                let hp = view.to_screen(h);
+                painter.line_segment([c, hp], Stroke::new(1.0, accent));
+                painter.circle(hp, 3.0, Color32::WHITE, Stroke::new(1.0, accent));
+            }
+        }
+        painter.rect(
+            ERect::from_center_size(c, Vec2::splat(7.0)),
+            0.0,
+            if edit { Color32::WHITE } else { accent },
+            Stroke::new(1.0, accent),
+            egui::StrokeKind::Middle,
+        );
+    }
 }
 
 fn finish_polygon(app: &mut App, points: &[(f32, f32)], op: SelectOp, label: &str) {
@@ -1608,6 +1729,19 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
         }
         let (cx, cy) = ts.center();
         painter.circle_stroke(view.to_screen((cx + ts.tx, cy + ts.ty)), 4.0, Stroke::new(1.5, t.accent));
+    }
+    // Paths: the selected one, plus the one being drawn.
+    let path_col = Color32::from_rgb(0, 200, 255);
+    if let Some(tab) = app.tab() {
+        if let Some(np) = app.active_path.and_then(|i| tab.doc.paths.get(i)) {
+            draw_path(painter, view, &np.path, path_col, matches!(app.tool, Tool::Pen | Tool::DirectSelect));
+        }
+    }
+    if let Some(bp) = &app.cv.pen {
+        draw_path(painter, view, bp, path_col, true);
+        if let (Some(last), Some(ptr)) = (bp.anchors.last(), pointer) {
+            painter.line_segment([view.to_screen(last.p), ptr], Stroke::new(1.0, path_col.gamma_multiply(0.6)));
+        }
     }
     if let (Some((a, b)), Tool::Ruler) = (app.cv.ruler, app.tool) {
         let (sa, sb) = (view.to_screen(a), view.to_screen(b));

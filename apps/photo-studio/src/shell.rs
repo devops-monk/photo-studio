@@ -143,6 +143,10 @@ fn handle_input(app: &mut App, ctx: &egui::Context, actions: &mut Vec<Action>) {
     if !typing {
         let (enter, esc) = ctx.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape)));
         if enter {
+            if let Some(bp) = app.cv.pen.take() {
+                crate::canvas::finish_pen(app, bp);
+                return;
+            }
             if app.cv.transform.is_some() {
                 crate::canvas::commit_transform(app);
                 return;
@@ -159,6 +163,7 @@ fn handle_input(app: &mut App, ctx: &egui::Context, actions: &mut Vec<Action>) {
             }
             app.cv.crop = None;
             app.cv.poly.clear();
+            app.cv.pen = None;
         }
     }
     // Command shortcuts (work even while typing when they use ⌘/Ctrl).
@@ -167,7 +172,16 @@ fn handle_input(app: &mut App, ctx: &egui::Context, actions: &mut Vec<Action>) {
             continue;
         }
         if typing
-            && matches!(a, Action::Undo | Action::Redo | Action::Copy | Action::Cut | Action::Paste | Action::SelectAll)
+            && matches!(
+                a,
+                Action::Undo
+                    | Action::Redo
+                    | Action::Copy
+                    | Action::Cut
+                    | Action::Paste
+                    | Action::SelectAll
+                    | Action::PathToSelection
+            )
         {
             continue;
         }
@@ -545,6 +559,27 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     if icon_button(ui, ph::ARROW_CLOCKWISE, "Rotate 90° clockwise", false, 26.0).clicked() {
                         actions.push(Action::RotateLayer(studio_core::transform::Rotation::Cw90));
                     }
+                }
+            }
+            Tool::Pen | Tool::DirectSelect => {
+                if app.cv.pen.is_some()
+                    && crate::widgets::primary_button(ui, &format!("{} Finish Path", ph::CHECK)).clicked()
+                {
+                    if let Some(bp) = app.cv.pen.take() {
+                        crate::canvas::finish_pen(app, bp);
+                    }
+                }
+                if ui.button("Make Selection").on_hover_text("⌘↩").clicked() {
+                    actions.push(Action::PathToSelection);
+                }
+                if ui.button("Fill").clicked() {
+                    actions.push(Action::FillPath);
+                }
+                if ui.button("Stroke").clicked() {
+                    actions.push(Action::StrokePath);
+                }
+                if ui.button("Shape Layer").clicked() {
+                    actions.push(Action::PathToShape);
                 }
             }
             Tool::PatternStamp => {
@@ -930,6 +965,7 @@ pub fn build_demo(app: &mut App, ctx: &egui::Context, variant: &str) {
         stroke: None,
         stroke_width: 2.0,
         dashed: false,
+        path: None,
     };
     tab.doc.active = 1;
     tab.doc.add_layer_of_kind("Badge", LayerKind::Shape(shape));

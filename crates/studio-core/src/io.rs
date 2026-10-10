@@ -168,6 +168,8 @@ struct Manifest {
     layers: Vec<LayerMeta>,
     #[serde(default)]
     guides: Vec<crate::document::Guide>,
+    #[serde(default)]
+    paths: Vec<crate::path::NamedPath>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -206,6 +208,7 @@ pub fn project_bytes(doc: &Document) -> Result<Vec<u8>> {
         ppi: doc.ppi,
         active: doc.active,
         guides: doc.guides.clone(),
+        paths: doc.paths.clone(),
         layers: doc
             .layers
             .iter()
@@ -274,6 +277,7 @@ pub fn project_from_bytes(bytes: &[u8]) -> Result<Document> {
     doc.layers.clear();
     doc.ppi = m.ppi;
     doc.guides = m.guides;
+    doc.paths = m.paths;
     let mut read_png = |name: String| -> Result<Option<DynamicImage>> {
         match za.by_name(&name) {
             Ok(mut f) => {
