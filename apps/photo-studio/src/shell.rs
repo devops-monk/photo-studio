@@ -230,6 +230,9 @@ fn handle_input(app: &mut App, ctx: &egui::Context, actions: &mut Vec<Action>) {
                 app.edit("Nudge", |doc| doc.nudge_active(dx, dy));
             }
         }
+        if key == Key::Q && !m.shift && app.tab().is_some() {
+            actions.push(Action::ToggleQuickMask);
+        }
         if matches!(key, Key::Delete | Key::Backspace) && app.tab().is_some() {
             actions.push(Action::Clear);
         }
@@ -720,7 +723,17 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 }
             }
         }
-        if app.edit_mask {
+        if app.quick_mask {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} Quick Mask — paint black to deselect, white to select · Q to exit",
+                        ph::SELECTION
+                    ))
+                    .color(t.danger),
+                );
+            });
+        } else if app.edit_mask {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(egui::RichText::new(format!("{} Editing layer mask", ph::CIRCLE_HALF_TILT)).color(t.accent));
             });

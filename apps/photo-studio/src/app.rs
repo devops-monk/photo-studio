@@ -65,6 +65,16 @@ impl Default for Prefs {
 pub enum StrokeTarget {
     Pixels,
     Mask(Image),
+    /// Quick Mask: painting the selection itself.
+    Selection(Image),
+}
+
+/// The selection as a grey image (white = selected; no selection = everything).
+pub fn selection_image(doc: &Document) -> Image {
+    match &doc.selection {
+        Some(m) => m.to_image(),
+        None => Mask::filled(doc.width, doc.height, 255).to_image(),
+    }
 }
 
 pub struct ActiveStroke {
@@ -99,6 +109,8 @@ pub struct App {
     pub props: ParamState,
     /// Brush strokes and fills target the active layer's mask.
     pub edit_mask: bool,
+    /// Quick Mask mode: painting edits the selection.
+    pub quick_mask: bool,
     pub show_edges: bool,
     pub props_pending: Option<(f64, &'static str)>,
     pub last_title: String,
@@ -135,6 +147,7 @@ impl App {
             quitting: false,
             props: ParamState::default(),
             edit_mask: false,
+            quick_mask: false,
             show_edges: true,
             props_pending: None,
             last_title: String::new(),
@@ -366,6 +379,15 @@ impl App {
     /// Like `edit`, but only for a raster active layer (text and shapes are rasterised first).
     pub fn edit_pixels(&mut self, ctx: &egui::Context, label: &str, f: impl FnOnce(&mut Image, Option<&Mask>)) {
         let edit_mask = self.edit_mask;
+        if self.quick_mask {
+            let Some(tab) = self.tab_mut() else { return };
+            let mut img = selection_image(&tab.doc);
+            f(&mut img, None);
+            let (w, h) = (img.width(), img.height());
+            tab.doc.selection = Some(Mask::from_raw(w, h, img.pixels().chunks_exact(4).map(|p| p[0]).collect()));
+            tab.commit(label);
+            return;
+        }
         let Some(tab) = self.tab_mut() else { return };
         let sel = tab.doc.selection.clone();
         let Some(layer) = tab.doc.active_layer_mut() else {
@@ -974,6 +996,43 @@ impl App {
                 }
             }
             Action::LoadLayerSelection => self.edit("Load Selection", |d| d.select_layer_pixels(d.active)),
+            Action::ToggleQuickMask => {
+                if !has_doc {
+                    return;
+                }
+                self.quick_mask = !self.quick_mask;
+                self.stroke = None;
+                if !self.quick_mask {
+                    // Leaving Quick Mask: a fully selected canvas means no selection.
+                    if let Some(tab) = self.tab_mut() {
+                        if tab.doc.selection.as_ref().is_some_and(|m| m.is_full()) {
+                            tab.doc.selection = None;
+                        }
+                        tab.invalidate_all();
+                    }
+                }
+            }
+            Action::SaveSelection => {
+                let Some(sel) = self.tab().and_then(|t| t.doc.selection.clone()) else {
+                    self.notify(ctx, "Nothing is selected");
+                    return;
+                };
+                self.edit("Save Selection", |d| {
+                    let name = format!("Alpha {}", d.channels.len() + 1);
+                    d.channels.push((name, sel));
+                });
+            }
+            Action::LoadChannel(i) => self.edit("Load Selection", |d| {
+                if let Some((_, m)) = d.channels.get(i) {
+                    let m = m.clone();
+                    d.set_selection(m);
+                }
+            }),
+            Action::DeleteChannel(i) => self.edit("Delete Channel", |d| {
+                if i < d.channels.len() {
+                    d.channels.remove(i);
+                }
+            }),
             Action::Modify(kind) => {
                 if self.tab().is_some_and(|t| t.doc.selection.is_some()) {
                     self.dialog =

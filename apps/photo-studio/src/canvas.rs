@@ -270,7 +270,12 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     app.cv.hover = pointer.filter(|p| view_rect.contains(*p)).map(|p| view.to_canvas(p));
 
     // ---- selection outline ----
-    if app.show_edges {
+    if app.quick_mask {
+        let ctx2 = ui.ctx().clone();
+        if let Some(tex) = app.docs[active].quick_mask_texture(&ctx2) {
+            painter.image(tex, img_rect, ERect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
+        }
+    } else if app.show_edges {
         draw_ants(app, &painter, &view, time);
     }
 
@@ -340,14 +345,16 @@ fn begin_stroke(app: &mut App, ctx: &egui::Context, p: (f32, f32)) -> bool {
         return false;
     };
     let sel = tab.doc.selection.clone();
+    let (target_w, target_h) = (tab.doc.width, tab.doc.height);
     let Some(layer) = tab.doc.active_layer_mut() else {
         return false;
     };
-    if layer.locked {
+    if layer.locked && !app.quick_mask {
         app.toast = Some(("The layer is locked".into(), ctx.input(|i| i.time)));
         return false;
     }
-    let mask_target = edit_mask && layer.mask.is_some();
+    let qm = app.quick_mask;
+    let mask_target = qm || (edit_mask && layer.mask.is_some());
     if !mask_target {
         match layer.kind {
             LayerKind::Raster => {}
@@ -358,7 +365,16 @@ fn begin_stroke(app: &mut App, ctx: &egui::Context, p: (f32, f32)) -> bool {
             }
         }
     }
-    let target_img = if mask_target { layer.mask.as_ref().unwrap().to_image() } else { layer.pixels.clone() };
+    let target_img = if qm {
+        match &sel {
+            Some(m) => m.to_image(),
+            None => studio_core::Mask::filled(target_w, target_h, 255).to_image(),
+        }
+    } else if mask_target {
+        layer.mask.as_ref().unwrap().to_image()
+    } else {
+        layer.pixels.clone()
+    };
     let mask_gray = |c: Rgba| {
         let l = studio_core::color::luma(c.r() as f32, c.g() as f32, c.b() as f32).round() as u8;
         Rgba::rgb(l, l, l)
@@ -434,8 +450,14 @@ fn begin_stroke(app: &mut App, ctx: &egui::Context, p: (f32, f32)) -> bool {
         Tool::Sponge => (StrokeKind::Sponge { saturate: opts.sponge_saturate, flow: opts.flow }, "Sponge", tip),
         _ => return false,
     };
-    let engine = StrokeEngine::new(&target_img, kind, tip, opts.opacity, opts.flow, sel);
-    let target = if mask_target { StrokeTarget::Mask(target_img) } else { StrokeTarget::Pixels };
+    let engine = StrokeEngine::new(&target_img, kind, tip, opts.opacity, opts.flow, if qm { None } else { sel });
+    let target = if qm {
+        StrokeTarget::Selection(target_img)
+    } else if mask_target {
+        StrokeTarget::Mask(target_img)
+    } else {
+        StrokeTarget::Pixels
+    };
     app.stroke = Some(ActiveStroke { engine, target, label });
     true
 }
@@ -447,11 +469,26 @@ fn continue_stroke(app: &mut App, p: (f32, f32), pressure: f32) {
     let Some(tab) = app.docs.get_mut(app.active) else {
         return;
     };
+    if let StrokeTarget::Selection(img) = &mut st.target {
+        let d = st.engine.stroke_to(img, p.0, p.1, pressure);
+        let (w, h) = (tab.doc.width, tab.doc.height);
+        let m = tab.doc.selection.get_or_insert_with(|| studio_core::Mask::filled(w, h, 255));
+        let src = img.pixels();
+        let md = m.data_mut();
+        for y in d.y..d.bottom() {
+            for x in d.x..d.right() {
+                let i = y as usize * w as usize + x as usize;
+                md[i] = src[i * 4];
+            }
+        }
+        return;
+    }
     let Some(layer) = tab.doc.active_layer_mut() else {
         return;
     };
     let dirty = match &mut st.target {
         StrokeTarget::Pixels => st.engine.stroke_to(&mut layer.pixels, p.0, p.1, pressure),
+        StrokeTarget::Selection(_) => return,
         StrokeTarget::Mask(img) => {
             let d = st.engine.stroke_to(img, p.0, p.1, pressure);
             if let Some(m) = layer.mask.as_mut() {

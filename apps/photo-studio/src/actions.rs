@@ -96,6 +96,10 @@ pub enum Action {
     SelectSubject,
     ColorRange,
     LoadLayerSelection,
+    ToggleQuickMask,
+    SaveSelection,
+    LoadChannel(usize),
+    DeleteChannel(usize),
     Modify(ModifyKind),
     // Filter
     RepeatFilter,

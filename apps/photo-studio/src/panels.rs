@@ -40,6 +40,7 @@ pub fn dock(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     card(ui, "adj", "Adjustments", true, |ui| adjustments(ui, actions));
                     properties(app, ui);
                     card(ui, "paths", "Paths", false, |ui| paths_panel(app, ui, actions));
+                    card(ui, "channels", "Channels", false, |ui| channels_panel(app, ui, actions));
                     card(ui, "history", "History", false, |ui| history(app, ui));
                 }
             });
@@ -478,6 +479,35 @@ fn properties(app: &mut App, ui: &mut Ui) {
         layer.render(w, h);
         tab.invalidate_all();
         app.props_pending = Some((now, label));
+    }
+}
+
+fn channels_panel(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
+    let t = Tokens::get(ui.ctx());
+    let Some(tab) = app.tab() else { return };
+    let names: Vec<String> = tab.doc.channels.iter().map(|c| c.0.clone()).collect();
+    let mut qm = app.quick_mask;
+    if toggle_row(ui, "Quick Mask (Q)", &mut qm) {
+        actions.push(Action::ToggleQuickMask);
+    }
+    if names.is_empty() {
+        label_dim(ui, "Saved selections appear here.");
+    }
+    for (i, n) in names.iter().enumerate() {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(format!("{}  {}", ph::SELECTION_BACKGROUND, n)).color(t.text));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if small_button(ui, ph::TRASH, "Delete").clicked() {
+                    actions.push(Action::DeleteChannel(i));
+                }
+                if small_button(ui, ph::SELECTION, "Load as selection").clicked() {
+                    actions.push(Action::LoadChannel(i));
+                }
+            });
+        });
+    }
+    if ui.button(format!("{} Save Selection", ph::FLOPPY_DISK)).clicked() {
+        actions.push(Action::SaveSelection);
     }
 }
 

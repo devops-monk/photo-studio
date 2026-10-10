@@ -101,6 +101,10 @@ pub fn action_label(a: &Action) -> String {
         Action::SelectSubject => "Subject".into(),
         Action::ColorRange => "Color Range…".into(),
         Action::LoadLayerSelection => "Load Layer Transparency".into(),
+        Action::ToggleQuickMask => "Edit in Quick Mask Mode".into(),
+        Action::SaveSelection => "Save Selection".into(),
+        Action::LoadChannel(_) => "Load Selection".into(),
+        Action::DeleteChannel(_) => "Delete Channel".into(),
         Action::Modify(k) => format!("{}…", k.label()),
         Action::RepeatFilter => "Repeat Last Filter".into(),
         Action::Filter(f) => {
@@ -318,6 +322,21 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::SelectSubject, doc);
             item(ui, out, Action::ColorRange, doc);
             item(ui, out, Action::LoadLayerSelection, doc);
+            item(ui, out, Action::SaveSelection, has_sel);
+            ui.menu_button("Load Selection", |ui| {
+                let channels: Vec<String> =
+                    tab.map(|t| t.doc.channels.iter().map(|c| c.0.clone()).collect()).unwrap_or_default();
+                if channels.is_empty() {
+                    ui.add_enabled(false, egui::Button::new("No saved selections"));
+                }
+                for (i, n) in channels.iter().enumerate() {
+                    if ui.button(n).clicked() {
+                        out.push(Action::LoadChannel(i));
+                        ui.close();
+                    }
+                }
+            });
+            check(ui, out, Action::ToggleQuickMask, app.quick_mask);
             ui.separator();
             ui.menu_button("Modify", |ui| {
                 for k in [
@@ -470,6 +489,8 @@ pub fn all_commands() -> Vec<Action> {
         Action::SelectSubject,
         Action::ColorRange,
         Action::LoadLayerSelection,
+        Action::ToggleQuickMask,
+        Action::SaveSelection,
         Action::Modify(ModifyKind::Feather),
         Action::Modify(ModifyKind::Expand),
         Action::Modify(ModifyKind::Contract),

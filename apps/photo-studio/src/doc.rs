@@ -42,6 +42,7 @@ pub struct DocTab {
     pub histogram: Option<(u64, studio_core::histogram::Histogram)>,
     /// The file this document was opened from (for flat images, `path` stays empty).
     pub source: Option<PathBuf>,
+    qm_tex: Option<(u64, TextureHandle)>,
 }
 
 impl DocTab {
@@ -68,6 +69,7 @@ impl DocTab {
             ants: None,
             histogram: None,
             source: None,
+            qm_tex: None,
         }
     }
 
@@ -247,6 +249,31 @@ impl DocTab {
         let id = tex.id();
         self.nav_tex = Some((self.composite_gen, tex));
         Some(id)
+    }
+
+    /// Red overlay of the unselected area for Quick Mask mode.
+    pub fn quick_mask_texture(&mut self, ctx: &egui::Context) -> Option<egui::TextureId> {
+        let sel = self.doc.selection.as_ref()?;
+        let stamp = sel.generation();
+        if let Some((s, t)) = &self.qm_tex {
+            if *s == stamp {
+                return Some(t.id());
+            }
+        }
+        let mut px = Vec::with_capacity(sel.data().len() * 4);
+        for &v in sel.data() {
+            px.extend_from_slice(&[255, 40, 40, ((255 - v as u32) * 128 / 255) as u8]);
+        }
+        let img = egui::ColorImage::from_rgba_unmultiplied([sel.width() as usize, sel.height() as usize], &px);
+        let opts = egui::TextureOptions { magnification: egui::TextureFilter::Nearest, ..egui::TextureOptions::LINEAR };
+        match &mut self.qm_tex {
+            Some((s, t)) => {
+                t.set(img, opts);
+                *s = stamp;
+            }
+            None => self.qm_tex = Some((stamp, ctx.load_texture("quick-mask", img, opts))),
+        }
+        self.qm_tex.as_ref().map(|(_, t)| t.id())
     }
 
     pub fn histogram(&mut self) -> &studio_core::histogram::Histogram {

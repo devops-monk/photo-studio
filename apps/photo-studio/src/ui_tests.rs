@@ -620,3 +620,38 @@ fn pen_drag_makes_a_curve() {
     assert!(!p.anchors[1].is_corner(), "dragging made a smooth anchor");
     assert!((p.anchors[1].h_out.1 - 100.0).abs() < 2.0);
 }
+
+#[test]
+fn quick_mask_paints_the_selection() {
+    let mut h = harness();
+    h.key_press(Key::Q);
+    h.run_steps(2);
+    assert!(h.state().quick_mask);
+    h.state_mut().set_tool(Tool::Brush);
+    h.state_mut().fg = Rgba::BLACK;
+    h.state_mut().opts.tip.hardness = 1.0;
+    drag(&mut h, (100.0, 150.0), (300.0, 150.0), Modifiers::NONE);
+    h.key_press(Key::Q);
+    h.run_steps(2);
+    assert!(!h.state().quick_mask);
+    let tab = h.state().tab().unwrap();
+    let sel = tab.doc.selection.as_ref().expect("selection");
+    assert_eq!(sel.get(200, 150), 0, "painted black = deselected");
+    assert_eq!(sel.get(200, 20), 255, "rest stays selected");
+    assert_eq!(tab.doc.layers[0].pixels.get(200, 150), Rgba::WHITE, "pixels untouched");
+}
+
+#[test]
+fn save_and_load_selection() {
+    let mut h = harness();
+    h.state_mut().set_tool(Tool::RectMarquee);
+    drag(&mut h, (20.0, 20.0), (120.0, 80.0), Modifiers::NONE);
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, crate::actions::Action::SaveSelection);
+    h.state_mut().run(&ctx, crate::actions::Action::Deselect);
+    assert!(h.state().tab().unwrap().doc.selection.is_none());
+    h.state_mut().run(&ctx, crate::actions::Action::LoadChannel(0));
+    let b = h.state().tab().unwrap().doc.selection.as_ref().and_then(|m| m.bounds()).unwrap();
+    assert!((b.x - 20).abs() <= 1 && (b.w as i32 - 100).abs() <= 2);
+    assert_eq!(h.state().tab().unwrap().doc.channels.len(), 1);
+}

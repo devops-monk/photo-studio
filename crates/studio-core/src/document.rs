@@ -27,6 +27,8 @@ pub struct Document {
     pub ppi: f32,
     pub guides: Vec<Guide>,
     pub paths: Vec<crate::path::NamedPath>,
+    /// Saved selections (alpha channels).
+    pub channels: Vec<(String, Mask)>,
 }
 
 /// Everything history needs to restore.
@@ -39,6 +41,7 @@ pub struct DocState {
     selection: Option<Mask>,
     guides: Vec<Guide>,
     paths: Vec<crate::path::NamedPath>,
+    channels: Vec<(String, Mask)>,
 }
 
 /// Where existing pixels sit when the canvas grows or shrinks.
@@ -105,6 +108,7 @@ impl Document {
             ppi: 72.0,
             guides: Vec::new(),
             paths: Vec::new(),
+            channels: Vec::new(),
         };
         let (name, img) = match bg {
             Some(c) => ("Background", Image::filled(width, height, c)),
@@ -126,6 +130,7 @@ impl Document {
             ppi: 72.0,
             guides: Vec::new(),
             paths: Vec::new(),
+            channels: Vec::new(),
         };
         let id = doc.new_id();
         doc.layers.push(Layer::raster(id, "Background", img));
@@ -151,6 +156,7 @@ impl Document {
             selection: self.selection.clone(),
             guides: self.guides.clone(),
             paths: self.paths.clone(),
+            channels: self.channels.clone(),
         }
     }
 
@@ -162,6 +168,7 @@ impl Document {
         self.selection = s.selection.clone();
         self.guides = s.guides.clone();
         self.paths = s.paths.clone();
+        self.channels = s.channels.clone();
         if let Some(max) = self.layers.iter().map(|l| l.id).max() {
             self.next_id = self.next_id.max(max + 1);
         }
@@ -605,6 +612,9 @@ impl Document {
             }
         }
         self.selection = self.selection.as_ref().map(&mask).filter(|m| !m.is_empty());
+        for (_, c) in &mut self.channels {
+            *c = mask(c);
+        }
         match params {
             Params::Offset(dx, dy) => {
                 for g in &mut self.guides {

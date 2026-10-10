@@ -186,6 +186,8 @@ struct Manifest {
     guides: Vec<crate::document::Guide>,
     #[serde(default)]
     paths: Vec<crate::path::NamedPath>,
+    #[serde(default)]
+    channels: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -225,6 +227,7 @@ pub fn project_bytes(doc: &Document) -> Result<Vec<u8>> {
         active: doc.active,
         guides: doc.guides.clone(),
         paths: doc.paths.clone(),
+        channels: doc.channels.iter().map(|(n, _)| n.clone()).collect(),
         layers: doc
             .layers
             .iter()
@@ -257,6 +260,11 @@ pub fn project_bytes(doc: &Document) -> Result<Vec<u8>> {
             zw.start_file(format!("masks/{}.png", l.id), stored)?;
             zw.write_all(&png_bytes(&DynamicImage::ImageLuma8(g))?)?;
         }
+    }
+    for (i, (_, m)) in doc.channels.iter().enumerate() {
+        let g = image::GrayImage::from_raw(m.width(), m.height(), m.data().to_vec()).expect("mask size");
+        zw.start_file(format!("channels/{i}.png"), stored)?;
+        zw.write_all(&png_bytes(&DynamicImage::ImageLuma8(g))?)?;
     }
     // A flattened preview lets other tools show a thumbnail.
     zw.start_file("preview.png", stored)?;
@@ -333,6 +341,14 @@ pub fn project_from_bytes(bytes: &[u8]) -> Result<Document> {
         layer.parent = meta.parent;
         doc.next_id = doc.next_id.max(meta.id + 1);
         doc.layers.push(layer);
+    }
+    for (i, name) in m.channels.iter().enumerate() {
+        if let Some(img) = read_png(format!("channels/{i}.png"))? {
+            let g = img.into_luma8();
+            if g.dimensions() == (m.width, m.height) {
+                doc.channels.push((name.clone(), Mask::from_raw(m.width, m.height, g.into_raw())));
+            }
+        }
     }
     if doc.layers.is_empty() {
         let id = doc.new_id();
@@ -626,6 +642,7 @@ mod tests {
         d.add_layer_of_kind("Invert", LayerKind::Adjustment(Adjustment::Invert));
         d.layers[2].styles.drop_shadow.enabled = true;
         d.guides.push(crate::document::Guide { horizontal: true, pos: 5.0 });
+        d.channels.push(("Alpha 1".into(), crate::select::rect_mask(16, 12, crate::geom::Rect::new(1, 1, 4, 4))));
         d
     }
 
@@ -645,6 +662,7 @@ mod tests {
         }
         assert_eq!(back.composite(), d.composite());
         assert_eq!(back.guides, d.guides);
+        assert_eq!(back.channels, d.channels);
     }
 
     #[test]
