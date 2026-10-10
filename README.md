@@ -10,16 +10,18 @@ One self-contained binary, no runtime, works offline.</p>
 
 ## Features
 
-- **Layers**: pixel, type, shape, fill and adjustment layers, plus 27 blend modes, opacity, locking, clipping masks and layer masks
-- **Layer styles**: drop shadow, inner shadow, outer and inner glow, stroke and color overlay
-- **16 adjustments**, usable live as adjustment layers or applied directly: Levels, Curves, Hue/Saturation, Color Balance, Black & White, Gradient Map, Selective Color and more, plus Auto Tone, Auto Color and Shadows/Highlights
-- **30 filters** with live preview inside the selection: blurs (Gaussian, motion, radial, surface, tilt-shift), sharpening, noise, distortions, pixelate, stylize and render
-- **Selections**: marquees, lasso, polygonal lasso, magic wand, quick selection, Select Subject and Color Range; feather, expand, contract, border and smooth
-- **Painting and retouching**: brush, pencil, eraser, clone stamp, healing and spot healing, blur, sharpen, smudge, dodge, burn, sponge, gradient and paint bucket
-- **Type and shapes**: editable text with bundled fonts; rectangles, rounded rectangles, ellipses, polygons, stars and lines
-- **Transform**: Free Transform, crop, image size, canvas size, rotate and flip
-- **Files**: layered `.pstudio` projects, PSD import and export, and PNG, JPEG, WebP, TIFF, BMP, GIF, TGA, ICO and QOI
-- **Undo history panel**, Navigator, Histogram, light and dark themes, and keyboard shortcuts familiar from other editors
+- **51 tools**: marquees, lasso, polygonal and magnetic lasso, Object Selection, Quick Selection, magic wand, crop, eyedropper, ruler, spot healing, Remove, healing, Patch, Content-Aware Move, red eye, brush, pencil, clone, pattern and history brushes, three erasers, gradient, paint bucket, blur, sharpen, smudge, Liquify, dodge, burn, sponge, horizontal and vertical type, Pen and Direct Selection, eleven shapes, hand and zoom
+- **Layers**: pixel, type, shape, fill (solid, gradient, pattern) and adjustment layers; groups (pass-through or isolated); smart objects with editable smart filters and lossless transforms; layer masks, clipping masks, 27 blend modes, opacity and fill opacity, locks and color labels
+- **Ten layer styles**: Bevel & Emboss, Stroke, inner and outer shadows and glows, Satin, and color, gradient and pattern overlays
+- **16 adjustments**, live as adjustment layers or applied directly, plus Auto Tone, Auto Contrast, Auto Color, Equalize and Shadows/Highlights
+- **31 filters** with live preview inside the selection, including Iris and Tilt-Shift blur, Reduce Noise, Liquify-style distortions, Oil Paint and Lens Flare
+- **Content-aware**: Content-Aware Fill (⇧⌫), the Remove brush, Patch and Content-Aware Move
+- **Selections**: Select Subject, Color Range, Quick Mask (Q), saved selections, feather, expand, contract, border and smooth
+- **Paths**: Bézier paths become selections, fills, strokes or shape layers
+- **Brushes**: presets with angle, roundness, scatter, size and opacity jitter, and stroke smoothing
+- **Workflow**: rulers, guides, grid and snapping; a ⌘F command palette; Actions that record, replay and batch-process folders; unlimited visual history
+- **Files**: layered `.pstudio` projects; PSD and OpenRaster with groups; SVG, OpenEXR and HDR; and PNG, JPEG, WebP, TIFF, BMP, GIF, TGA, ICO, QOI and PNM
+- Light and dark themes, and keyboard shortcuts familiar from other editors
 
 ## Install
 
