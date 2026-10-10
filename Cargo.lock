@@ -2712,7 +2712,7 @@ dependencies = [
 
 [[package]]
 name = "photo-studio"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arboard",
  "eframe",
@@ -2731,7 +2731,7 @@ dependencies = [
 
 [[package]]
 name = "photo-studio-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "studio-core",
 ]
@@ -3651,7 +3651,7 @@ dependencies = [
 
 [[package]]
 name = "studio-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ab_glyph",
  "image",
