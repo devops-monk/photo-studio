@@ -468,6 +468,29 @@ pub fn filter_ui(ui: &mut Ui, f: &mut Filter) -> bool {
             c |= slider_row(ui, "Blur", blur, 1.0..=80.0, " px", 0);
             (*focus_y, *focus_height, *transition) = (fy / 100.0, fh / 100.0, tr / 100.0);
         }
+        Filter::PathBlur { points, speed } => {
+            c |= slider_row(ui, "Speed", speed, 1.0..=200.0, " px", 0);
+            let mut remove = None;
+            for (i, (x, y)) in points.iter_mut().enumerate() {
+                ui.label(egui::RichText::new(format!("Point {}", i + 1)).strong());
+                let (mut px, mut py) = (*x * 100.0, *y * 100.0);
+                c |= slider_row(ui, "X", &mut px, 0.0..=100.0, "%", 0);
+                c |= slider_row(ui, "Y", &mut py, 0.0..=100.0, "%", 0);
+                (*x, *y) = (px / 100.0, py / 100.0);
+                if i >= 2 && ui.small_button("Remove point").clicked() {
+                    remove = Some(i);
+                }
+            }
+            if let Some(i) = remove {
+                points.remove(i);
+                c = true;
+            }
+            if points.len() < 8 && ui.button("Add point").clicked() {
+                let last = *points.last().unwrap_or(&(0.5, 0.5));
+                points.push(((last.0 + 0.1).min(1.0), last.1));
+                c = true;
+            }
+        }
         Filter::FieldBlur { pins } => {
             let mut remove = None;
             for (i, (x, y, r)) in pins.iter_mut().enumerate() {

@@ -221,6 +221,11 @@ pub enum Filter {
         transition: f32,
         blur: f32,
     },
+    /// Blur Gallery's Path Blur: motion blur along the direction of the nearest path segment.
+    PathBlur {
+        points: Vec<(f32, f32)>,
+        speed: f32,
+    },
     /// Blur Gallery's Field Blur: pins (x, y as 0..1, blur radius) blended smoothly.
     FieldBlur {
         pins: Vec<(f32, f32, f32)>,
@@ -379,6 +384,7 @@ impl Filter {
             Self::TiltShift { focus_y: 0.5, focus_height: 0.2, transition: 0.2, blur: 12.0 },
             Self::IrisBlur { cx: 0.5, cy: 0.5, rx: 0.25, ry: 0.25, transition: 0.2, blur: 15.0 },
             Self::FieldBlur { pins: vec![(0.25, 0.5, 0.0), (0.75, 0.5, 20.0)] },
+            Self::PathBlur { points: vec![(0.2, 0.7), (0.5, 0.4), (0.8, 0.6)], speed: 30.0 },
             Self::Sharpen,
             Self::SharpenMore,
             Self::UnsharpMask { amount: 80.0, radius: 1.5, threshold: 0 },
@@ -416,6 +422,7 @@ impl Filter {
             Self::TiltShift { .. } => "Tilt-Shift",
             Self::IrisBlur { .. } => "Iris Blur",
             Self::FieldBlur { .. } => "Field Blur",
+            Self::PathBlur { .. } => "Path Blur",
             Self::Sharpen => "Sharpen",
             Self::SharpenMore => "Sharpen More",
             Self::UnsharpMask { .. } => "Unsharp Mask",
@@ -452,7 +459,8 @@ impl Filter {
             | Self::SurfaceBlur { .. }
             | Self::TiltShift { .. }
             | Self::IrisBlur { .. }
-            | Self::FieldBlur { .. } => FilterGroup::Blur,
+            | Self::FieldBlur { .. }
+            | Self::PathBlur { .. } => FilterGroup::Blur,
             Self::Sharpen | Self::SharpenMore | Self::UnsharpMask { .. } => FilterGroup::Sharpen,
             Self::AddNoise { .. } | Self::Median { .. } | Self::ReduceNoise { .. } | Self::DustScratches { .. } => {
                 FilterGroup::Noise
@@ -484,7 +492,11 @@ impl Filter {
         matches!(self.group(), FilterGroup::Distort | FilterGroup::Render)
             || matches!(
                 self,
-                Self::RadialBlur { .. } | Self::TiltShift { .. } | Self::IrisBlur { .. } | Self::FieldBlur { .. }
+                Self::RadialBlur { .. }
+                    | Self::TiltShift { .. }
+                    | Self::IrisBlur { .. }
+                    | Self::FieldBlur { .. }
+                    | Self::PathBlur { .. }
             )
     }
 
@@ -618,6 +630,39 @@ impl Filter {
                     }
                 });
                 out
+            }
+            Self::PathBlur { points, speed } => {
+                if points.len() < 2 {
+                    return img.clone();
+                }
+                let b = Buf::from_image(img);
+                let pts: Vec<(f32, f32)> = points.iter().map(|p| (p.0 * w, p.1 * h)).collect();
+                let n = (speed.max(1.0) as usize).max(2);
+                map_buf(&b, |x, y| {
+                    let (px, py) = (x + 0.5, y + 0.5);
+                    // Direction of the closest segment.
+                    let mut best = (f32::MAX, 1.0f32, 0.0f32);
+                    for s in pts.windows(2) {
+                        let (dx, dy) = (s[1].0 - s[0].0, s[1].1 - s[0].1);
+                        let len2 = (dx * dx + dy * dy).max(1e-6);
+                        let t = (((px - s[0].0) * dx + (py - s[0].1) * dy) / len2).clamp(0.0, 1.0);
+                        let d2 = (px - s[0].0 - t * dx).powi(2) + (py - s[0].1 - t * dy).powi(2);
+                        if d2 < best.0 {
+                            let l = len2.sqrt();
+                            best = (d2, dx / l, dy / l);
+                        }
+                    }
+                    let (c, s) = (best.1, best.2);
+                    let mut acc = [0.0; 4];
+                    for i in 0..n {
+                        let t = i as f32 / (n - 1) as f32 - 0.5;
+                        let p = b.sample(px + c * t * speed, py + s * t * speed);
+                        for k in 0..4 {
+                            acc[k] += p[k];
+                        }
+                    }
+                    acc.map(|v| v / n as f32)
+                })
             }
             Self::FieldBlur { pins } => {
                 if pins.is_empty() {
@@ -1393,6 +1438,24 @@ mod tests {
             let out = f.run(&img, &FilterCtx::default());
             assert_eq!(out.size(), img.size(), "{}", f.label());
         }
+    }
+
+    #[test]
+    fn path_blur_follows_direction() {
+        // Vertical stripes: a horizontal path smears them, a vertical one leaves them.
+        let mut img = Image::new(32, 32);
+        for y in 0..32 {
+            for x in 0..32 {
+                let v = if (x / 2) % 2 == 0 { 255 } else { 0 };
+                img.put(x, y, Rgba::rgb(v, v, v));
+            }
+        }
+        let ctx = FilterCtx::default();
+        let across = Filter::PathBlur { points: vec![(0.0, 0.5), (1.0, 0.5)], speed: 8.0 }.run(&img, &ctx);
+        let along = Filter::PathBlur { points: vec![(0.5, 0.0), (0.5, 1.0)], speed: 8.0 }.run(&img, &ctx);
+        let g = across.get(16, 16).r();
+        assert!((80..180).contains(&g), "smeared across stripes: {g}");
+        assert_eq!(along.get(16, 16), img.get(16, 16), "unchanged along stripes");
     }
 
     #[test]
