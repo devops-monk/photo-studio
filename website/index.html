@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <meta property="og:title" content="Photo Studio">
   <meta property="og:description" content="A fast, native, layer-based photo editor for macOS, Windows and Linux.">
-  <meta property="og:image" content="https://photo-studio.devops-monk.com/assets/shots/demo.jpg">
+  <meta property="og:image" content="https://photo-studio.devops-monk.com/assets/shots/hero.jpg">
   <meta property="og:url" content="https://photo-studio.devops-monk.com/">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -38,23 +38,23 @@
     <img class="hero-logo" src="assets/logo-animated.svg" width="168" height="168" alt="Photo Studio logo: a six-blade camera iris">
     <p class="eyebrow">Free · Open source · macOS, Windows &amp; Linux</p>
     <h1>Photo Studio.<br><span class="grad">Edit without limits.</span></h1>
-    <p class="lead">Layers, masks, adjustment layers, layer styles, smart selections and 30 filters, in a native app that opens in an instant and works offline.</p>
+    <p class="lead">Layers and groups, masks, smart objects, adjustment layers, layer styles, the Pen tool and 30 filters, in a native app that opens in an instant and works offline.</p>
     <div class="cta">
       <a class="btn primary" href="#download" id="hero-download">Download</a>
       <a class="btn link" href="#features">Explore features ›</a>
     </div>
     <figure class="hero-shot reveal">
-      <img src="assets/shots/demo.jpg" width="1600" height="1000" alt="Photo Studio editing Hokusai's Great Wave: a Twirl filter previewing inside an elliptical selection, a type layer with drop shadow and stroke, and the Layers panel" loading="eager">
+      <img src="assets/shots/hero.jpg" width="1600" height="1000" alt="Photo Studio editing Turner's The Fighting Temeraire: a Twirl filter previewing inside an elliptical selection, a grouped type layer with layer styles, rulers, and the Layers panel" loading="eager">
     </figure>
-    <p class="caption"><em>The Great Wave off Kanagawa</em>, Katsushika Hokusai, c. 1831. Public domain.</p>
+    <p class="caption"><em>The Fighting Temeraire</em>, J. M. W. Turner, 1839. Public domain.</p>
   </header>
 
   <section class="stats reveal">
-    <div><b>32</b><span>tools</span></div>
+    <div><b>46</b><span>tools</span></div>
     <div><b>27</b><span>blend modes</span></div>
     <div><b>16</b><span>adjustments</span></div>
     <div><b>30</b><span>filters</span></div>
-    <div><b>12</b><span>file formats</span></div>
+    <div><b>16</b><span>file formats</span></div>
   </section>
 
   <section class="feature" id="features">
@@ -63,24 +63,33 @@
       <h2>Edit without regret.</h2>
       <p>Stack Curves, Levels, Hue/Saturation, Color Balance, Black &amp; White, Gradient Map and ten more as live adjustment layers. Mask them, reorder them, switch them off. Your original pixels never change.</p>
     </div>
-    <figure class="reveal"><img src="assets/shots/light.jpg" width="1600" height="1000" loading="lazy" alt="Light theme with The Starry Night, a type layer, a shape layer and a Curves adjustment layer"></figure>
+    <figure class="reveal"><img src="assets/shots/nondestructive.jpg" width="1600" height="1000" loading="lazy" alt="Light theme with Hubble's Pillars of Creation, a grouped type layer, a shape layer and a Curves adjustment layer"></figure>
   </section>
 
   <section class="feature alt">
     <div class="copy reveal">
       <p class="eyebrow">Live preview</p>
       <h2>See it before you commit.</h2>
-      <p>Every filter and adjustment previews right on the canvas, limited to your selection. Blur, sharpen, denoise, twirl, ripple, oil paint, halftone, vignette, lens flare and more.</p>
+      <p>Every filter and adjustment previews right on the canvas, limited to your selection. On a smart object, filters stay live: toggle, tweak or remove them any time.</p>
     </div>
-    <figure class="reveal"><img src="assets/shots/doc.jpg" width="1600" height="1000" loading="lazy" alt="The Great Wave open in Photo Studio's dark theme"></figure>
+    <figure class="reveal"><img src="assets/shots/dark.jpg" width="1600" height="1000" loading="lazy" alt="Pillars of Creation open in Photo Studio's dark theme with a group, a type layer and a Curves adjustment"></figure>
+  </section>
+
+  <section class="feature">
+    <div class="copy reveal">
+      <p class="eyebrow">Ten layer styles</p>
+      <h2>Styles that sell the shot.</h2>
+      <p>Bevel &amp; Emboss, Satin, Stroke, inner and outer shadows and glows, and color, gradient and pattern overlays, live on any layer, including type.</p>
+    </div>
+    <figure class="reveal"><img src="assets/shots/styles.jpg" width="1600" height="1000" loading="lazy" alt="A type layer with Bevel &amp; Emboss and a sunset Gradient Overlay over The Fighting Temeraire"></figure>
   </section>
 
   <section class="grid-features">
-    <article class="card reveal"><div class="ico">◎</div><h3>Selections that think</h3><p>Marquee, lasso, magic wand, quick selection, Color Range and Select Subject. Feather, expand, contract, border and smooth.</p></article>
-    <article class="card reveal"><div class="ico">✦</div><h3>Layer styles</h3><p>Drop and inner shadow, outer and inner glow, stroke and color overlay, live on any layer, including type.</p></article>
-    <article class="card reveal"><div class="ico">✎</div><h3>Paint &amp; retouch</h3><p>Brush, pencil, clone stamp, healing and spot healing, smudge, dodge, burn and sponge, with pressure support.</p></article>
-    <article class="card reveal"><div class="ico">T</div><h3>Type &amp; shapes</h3><p>Editable text with bundled fonts. Rectangles, rounded rectangles, ellipses, polygons, stars and lines as shape layers.</p></article>
-    <article class="card reveal"><div class="ico">⇄</div><h3>Real PSD files</h3><p>Open layered Photoshop documents and save them back. Projects save losslessly as <code>.pstudio</code>.</p></article>
+    <article class="card reveal"><div class="ico">◎</div><h3>Selections that think</h3><p>Object Selection, Select Subject, Quick Selection, magic wand, Color Range, lassos and marquees. Quick Mask and saved selections.</p></article>
+    <article class="card reveal"><div class="ico">❏</div><h3>Groups &amp; smart objects</h3><p>Nest layers in pass-through or isolated groups. Smart objects scale without loss and keep their filters editable.</p></article>
+    <article class="card reveal"><div class="ico">✎</div><h3>Paint &amp; retouch</h3><p>Brush presets with scatter, jitter and smoothing. Clone, pattern and history brushes, healing, red eye, dodge and burn.</p></article>
+    <article class="card reveal"><div class="ico">✒</div><h3>Pen, type &amp; shapes</h3><p>Bézier paths become selections, fills, strokes or shape layers. Horizontal and vertical type with bundled fonts.</p></article>
+    <article class="card reveal"><div class="ico">⇄</div><h3>Open format support</h3><p>PSD with groups, OpenRaster for Krita and GIMP, SVG, EXR, plus PNG, JPEG, WebP, TIFF and more.</p></article>
     <article class="card reveal"><div class="ico">↺</div><h3>Unlimited undo</h3><p>A visual History panel lets you jump to any step. Copy-on-write layers keep it light on memory.</p></article>
   </section>
 
@@ -88,9 +97,18 @@
     <div class="copy reveal center">
       <p class="eyebrow">Familiar by design</p>
       <h2>The tools you already know.</h2>
-      <p>Shortcuts where your hands expect them: V, M, L, W, C, I, J, B, S, E, G, T, U, H, Z, plus ⌘J, ⌘E, ⌘T and ⇧⌘I.</p>
+      <p>Shortcuts where your hands expect them: V, M, L, W, C, I, J, B, S, E, G, T, P, U, H, Z, plus ⌘J, ⌘G, ⌘T and ⇧⌘I. Rulers, guides and snapping keep everything lined up.</p>
     </div>
-    <figure class="reveal wide"><img src="assets/shots/icons2.jpg" width="1600" height="1000" loading="lazy" alt="Options bars for the painting, toning, type and shape tools"></figure>
+    <figure class="reveal wide"><img src="assets/shots/guides.jpg" width="1600" height="1000" loading="lazy" alt="Rulers, guides and the grid over The Fighting Temeraire"></figure>
+  </section>
+
+  <section class="feature alt">
+    <div class="copy reveal">
+      <p class="eyebrow">⌘F</p>
+      <h2>Every command, one keystroke away.</h2>
+      <p>The command palette searches every menu item, adjustment and filter. Type a few letters and press Return.</p>
+    </div>
+    <figure class="reveal"><img src="assets/shots/palette.jpg" width="1600" height="1000" loading="lazy" alt="The command palette listing blur filters"></figure>
   </section>
 
   <section class="cli" id="cli">

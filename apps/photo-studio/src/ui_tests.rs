@@ -696,3 +696,51 @@ fn smart_object_filters_and_project_round_trip() {
     tab.doc.layers[1].render(w, hh);
     assert_eq!(tab.doc.layers[1].pixels.get(150, 150), Rgba::BLACK);
 }
+
+#[test]
+fn align_paste_in_place_and_object_select() {
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        tab.doc.add_empty_layer("dot");
+        for y in 50..70 {
+            for x in 60..80 {
+                tab.doc.layers[1].pixels.put(x, y, Rgba::rgb(200, 20, 20));
+            }
+        }
+        tab.commit("dot");
+    }
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, crate::actions::Action::Align(Some(1), Some(1)));
+    let b = h.state().tab().unwrap().doc.layers[1].pixels.opaque_bounds().unwrap();
+    assert_eq!((b.right(), b.bottom()), (400, 300), "aligned to the canvas corner");
+
+    // Copy, then Paste in Place lands exactly where it came from.
+    h.state_mut().run(&ctx, crate::actions::Action::Copy);
+    h.state_mut().run(&ctx, crate::actions::Action::PasteInPlace);
+    let doc = &h.state().tab().unwrap().doc;
+    assert_eq!(doc.layers.len(), 3);
+    assert_eq!(doc.layers[2].pixels.opaque_bounds(), Some(b));
+
+    // Object Selection finds the square inside a box drawn around it.
+    h.state_mut().set_tool(Tool::ObjectSelect);
+    drag(&mut h, (360.0, 260.0), (400.0, 300.0), Modifiers::NONE);
+    let sel = h.state().tab().unwrap().doc.selection.as_ref().expect("selection");
+    assert!(sel.get(390, 290) > 200);
+    assert_eq!(sel.get(365, 265), 0);
+}
+
+#[test]
+fn vertical_type_option() {
+    let mut h = harness();
+    h.state_mut().set_tool(Tool::Text);
+    h.state_mut().opts.vertical_text = true;
+    click(&mut h, (200.0, 60.0));
+    h.event(Event::Text("ABCD".into()));
+    h.run_steps(3);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+    h.run_steps(3);
+    let doc = &h.state().tab().unwrap().doc;
+    let ink = doc.layers[1].pixels.opaque_bounds().unwrap();
+    assert!(ink.h > ink.w * 2, "{ink:?}");
+}

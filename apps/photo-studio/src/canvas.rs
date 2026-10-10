@@ -622,6 +622,23 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                 }
             }
         }
+        Tool::ObjectSelect => {
+            if primary_pressed && resp.drag_started() {
+                let op = select_op(mods, app.opts.select_op);
+                app.cv.drag = Some(Drag::Marquee { start: origin, cur: p, op, ellipse: false, constrain: false });
+            }
+            if let Some(Drag::Marquee { cur, .. }) = &mut app.cv.drag {
+                *cur = p;
+                if resp.drag_stopped() {
+                    let Some(Drag::Marquee { start, cur, op, .. }) = app.cv.drag.take() else { unreachable!() };
+                    let tab = &mut app.docs[active];
+                    let m = select::select_object(&tab.composite, Rect::from_points(start, cur));
+                    let new = select::combine(tab.doc.selection.as_ref(), m, op);
+                    tab.doc.set_selection(new);
+                    tab.commit("Object Selection");
+                }
+            }
+        }
         Tool::RectMarquee | Tool::EllipseMarquee => {
             if primary_pressed && resp.drag_started() {
                 let op = select_op(mods, app.opts.select_op);
@@ -1073,6 +1090,7 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                         let mut tl = TextLayer::new("", p.0, p.1 - o.font_size * 0.8, o.font_size, app.fg);
                         tl.face = o.face;
                         tl.align = o.align;
+                        tl.vertical = o.vertical_text;
                         tab.doc.add_layer_of_kind("Text", LayerKind::Text(tl));
                         tab.doc.layers[tab.doc.active].mask = None;
                         let id = tab.doc.layers[tab.doc.active].id;

@@ -104,6 +104,8 @@ pub struct App {
     pub last_filter: Option<Filter>,
     pub last_selection: Option<Mask>,
     pub clipboard: Option<Image>,
+    /// Where the copied pixels came from, for Paste in Place.
+    pub clipboard_origin: Option<(i32, i32)>,
     pub confirm: Option<Confirm>,
     pub quitting: bool,
     pub props: ParamState,
@@ -143,6 +145,7 @@ impl App {
             last_filter: None,
             last_selection: None,
             clipboard: None,
+            clipboard_origin: None,
             confirm: None,
             quitting: false,
             props: ParamState::default(),
@@ -456,6 +459,7 @@ impl App {
             });
         }
         self.clipboard = Some(out);
+        self.clipboard_origin = Some((crop.x, crop.y));
         if cut {
             self.edit_pixels(ctx, "Cut", |img, sel| img.clear(sel));
         }
@@ -470,6 +474,40 @@ impl App {
             }
         }
         self.clipboard.clone()
+    }
+
+    /// Paste where the pixels were copied from (or centred), optionally masked to the selection.
+    pub fn paste_special(&mut self, ctx: &egui::Context, into: bool) {
+        let Some(img) = self.clipboard_image() else {
+            self.notify(ctx, "The clipboard has no image");
+            return;
+        };
+        let origin = self.clipboard_origin.filter(|_| self.clipboard.as_ref().is_some_and(|c| c.size() == img.size()));
+        self.edit(if into { "Paste Into" } else { "Paste in Place" }, |doc| {
+            let mut px = Image::new(doc.width, doc.height);
+            let (x, y) = match (into, origin) {
+                (false, Some(o)) => o,
+                _ => {
+                    let (cx, cy) = doc
+                        .selection
+                        .as_ref()
+                        .and_then(|m| m.bounds())
+                        .map(|b| (b.x + b.w as i32 / 2, b.y + b.h as i32 / 2))
+                        .unwrap_or((doc.width as i32 / 2, doc.height as i32 / 2));
+                    (cx - img.width() as i32 / 2, cy - img.height() as i32 / 2)
+                }
+            };
+            px.blit(&img, x, y);
+            let id = doc.new_id();
+            let name = doc.unique_name("Layer");
+            let mut layer = Layer::raster(id, name, px);
+            if into {
+                layer.mask = doc.selection.clone();
+            }
+            doc.insert_layer(layer);
+            doc.selection = None;
+        });
+        self.edit_mask = false;
     }
 
     pub fn paste(&mut self, ctx: &egui::Context) {
@@ -639,6 +677,15 @@ impl App {
             Action::Copy => self.copy(ctx, false, false),
             Action::CopyMerged => self.copy(ctx, true, false),
             Action::Paste => self.paste(ctx),
+            Action::PasteInPlace => self.paste_special(ctx, false),
+            Action::PasteInto => {
+                if self.tab().is_some_and(|t| t.doc.selection.is_some()) {
+                    self.paste_special(ctx, true);
+                } else {
+                    self.notify(ctx, "Make a selection to paste into");
+                }
+            }
+            Action::Align(h, v) => self.edit("Align", |d| d.align_active(h, v)),
             Action::Clear => self.edit_pixels(ctx, "Clear", |img, sel| img.clear(sel)),
             Action::Fill => {
                 if has_doc {

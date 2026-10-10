@@ -494,6 +494,13 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     actions.push(Action::SelectSubject);
                 }
             }
+            Tool::ObjectSelect => {
+                select_ops(ui, &mut o.select_op);
+                label_dim(ui, "Drag a box around an object");
+                if ui.button("Select Subject").clicked() {
+                    actions.push(Action::SelectSubject);
+                }
+            }
             Tool::QuickSelect => {
                 label_dim(ui, "Size");
                 ui.add(egui::DragValue::new(&mut o.tip.size).range(1.0..=500.0).suffix(" px"));
@@ -570,6 +577,9 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                         (Align::Right, ph::TEXT_ALIGN_RIGHT),
                     ],
                 );
+                if icon_button(ui, ph::ARROWS_DOWN_UP, "Vertical type", o.vertical_text, 26.0).clicked() {
+                    o.vertical_text = !o.vertical_text;
+                }
                 label_dim(ui, "Uses the foreground color");
             }
             Tool::Rectangle
@@ -629,6 +639,21 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     }
                     if icon_button(ui, ph::ARROW_CLOCKWISE, "Rotate 90° clockwise", false, 26.0).clicked() {
                         actions.push(Action::RotateLayer(studio_core::transform::Rotation::Cw90));
+                    }
+                    ui.add(egui::Separator::default().vertical());
+                    let target =
+                        if app.tab().is_some_and(|t| t.doc.selection.is_some()) { "selection" } else { "canvas" };
+                    for (icon, h, v, what) in [
+                        (ph::ALIGN_LEFT, Some(-1), None, "left edges"),
+                        (ph::ALIGN_CENTER_HORIZONTAL, Some(0), None, "horizontal centers"),
+                        (ph::ALIGN_RIGHT, Some(1), None, "right edges"),
+                        (ph::ALIGN_TOP, None, Some(-1), "top edges"),
+                        (ph::ALIGN_CENTER_VERTICAL, None, Some(0), "vertical centers"),
+                        (ph::ALIGN_BOTTOM, None, Some(1), "bottom edges"),
+                    ] {
+                        if icon_button(ui, icon, &format!("Align {what} to the {target}"), false, 26.0).clicked() {
+                            actions.push(Action::Align(h, v));
+                        }
                     }
                 }
             }
@@ -1020,11 +1045,12 @@ pub fn build_demo(app: &mut App, ctx: &egui::Context, variant: &str) {
     app.run(ctx, Action::NewAdjustmentLayer(curves));
     let tab = &mut app.docs[app.active];
     let (w, h) = (tab.doc.width as f32, tab.doc.height as f32);
+    let title = std::env::var("PHOTO_STUDIO_TITLE").unwrap_or_else(|_| "PHOTO STUDIO".into());
     let mut tl =
-        studio_core::text::TextLayer::new("THE GREAT WAVE", w * 0.52, h * 0.08, w * 0.05, studio_core::Rgba::WHITE);
+        studio_core::text::TextLayer::new(title.clone(), w * 0.52, h * 0.08, w * 0.05, studio_core::Rgba::WHITE);
     tl.face = studio_core::text::FontFace::SansBold;
     tl.tracking = 80.0;
-    tab.doc.add_layer_of_kind("THE GREAT WAVE", LayerKind::Text(tl));
+    tab.doc.add_layer_of_kind(&title, LayerKind::Text(tl));
     let i = tab.doc.active;
     tab.doc.layers[i].styles.drop_shadow.enabled = true;
     tab.doc.layers[i].styles.stroke.enabled = true;

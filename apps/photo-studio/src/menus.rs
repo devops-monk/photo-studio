@@ -29,6 +29,17 @@ pub fn action_label(a: &Action) -> String {
         Action::Copy => "Copy".into(),
         Action::CopyMerged => "Copy Merged".into(),
         Action::Paste => "Paste".into(),
+        Action::PasteInPlace => "Paste in Place".into(),
+        Action::PasteInto => "Paste Into".into(),
+        Action::Align(h, v) => match (h, v) {
+            (Some(-1), None) => "Align Left Edges".into(),
+            (Some(0), None) => "Align Horizontal Centers".into(),
+            (Some(_), None) => "Align Right Edges".into(),
+            (None, Some(-1)) => "Align Top Edges".into(),
+            (None, Some(0)) => "Align Vertical Centers".into(),
+            (None, Some(_)) => "Align Bottom Edges".into(),
+            _ => "Center".into(),
+        },
         Action::Clear => "Clear".into(),
         Action::Fill => "Fill…".into(),
         Action::Stroke => "Stroke…".into(),
@@ -217,6 +228,8 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::Copy, doc);
             item(ui, out, Action::CopyMerged, doc);
             item(ui, out, Action::Paste, true);
+            item(ui, out, Action::PasteInPlace, doc);
+            item(ui, out, Action::PasteInto, has_sel);
             item(ui, out, Action::Clear, doc);
             ui.separator();
             item(ui, out, Action::Fill, doc);
@@ -304,6 +317,18 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::ConvertToSmart, doc);
             item(ui, out, Action::Rasterize, doc);
             ui.separator();
+            ui.menu_button(if has_sel { "Align to Selection" } else { "Align to Canvas" }, |ui| {
+                for (h, v) in [
+                    (Some(-1), None),
+                    (Some(0), None),
+                    (Some(1), None),
+                    (None, Some(-1)),
+                    (None, Some(0)),
+                    (None, Some(1)),
+                ] {
+                    item(ui, out, Action::Align(h, v), doc);
+                }
+            });
             ui.menu_button("Arrange", |ui| {
                 item(ui, out, Action::BringToFront, doc);
                 item(ui, out, Action::BringForward, doc);
@@ -424,6 +449,14 @@ pub fn all_commands() -> Vec<Action> {
         Action::Copy,
         Action::CopyMerged,
         Action::Paste,
+        Action::PasteInPlace,
+        Action::PasteInto,
+        Action::Align(Some(-1), None),
+        Action::Align(Some(0), None),
+        Action::Align(Some(1), None),
+        Action::Align(None, Some(-1)),
+        Action::Align(None, Some(0)),
+        Action::Align(None, Some(1)),
         Action::Clear,
         Action::Fill,
         Action::Stroke,

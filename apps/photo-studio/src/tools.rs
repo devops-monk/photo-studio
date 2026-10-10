@@ -16,6 +16,7 @@ pub enum Tool {
     Lasso,
     PolyLasso,
     QuickSelect,
+    ObjectSelect,
     MagicWand,
     Crop,
     Eyedropper,
@@ -62,7 +63,7 @@ pub const GROUPS: &[&[Tool]] = &[
     &[Tool::Move],
     &[Tool::RectMarquee, Tool::EllipseMarquee],
     &[Tool::Lasso, Tool::PolyLasso],
-    &[Tool::QuickSelect, Tool::MagicWand],
+    &[Tool::ObjectSelect, Tool::QuickSelect, Tool::MagicWand],
     &[Tool::Crop],
     &[Tool::Eyedropper, Tool::Ruler],
     &[Tool::SpotHeal, Tool::Heal, Tool::RedEye],
@@ -101,6 +102,7 @@ impl Tool {
             Self::Lasso => "Lasso",
             Self::PolyLasso => "Polygonal Lasso",
             Self::QuickSelect => "Quick Selection",
+            Self::ObjectSelect => "Object Selection",
             Self::MagicWand => "Magic Wand",
             Self::Crop => "Crop",
             Self::Eyedropper => "Eyedropper",
@@ -151,6 +153,7 @@ impl Tool {
             Self::Lasso => ph::LASSO,
             Self::PolyLasso => ph::POLYGON,
             Self::QuickSelect => ph::SPARKLE,
+            Self::ObjectSelect => ph::USER_FOCUS,
             Self::MagicWand => ph::MAGIC_WAND,
             Self::Crop => ph::CROP,
             Self::Eyedropper => ph::EYEDROPPER,
@@ -199,7 +202,7 @@ impl Tool {
             Self::Move => Key::V,
             Self::RectMarquee | Self::EllipseMarquee => Key::M,
             Self::Lasso | Self::PolyLasso => Key::L,
-            Self::QuickSelect | Self::MagicWand => Key::W,
+            Self::QuickSelect | Self::MagicWand | Self::ObjectSelect => Key::W,
             Self::Crop => Key::C,
             Self::Eyedropper | Self::Ruler => Key::I,
             Self::SpotHeal | Self::Heal | Self::RedEye => Key::J,
@@ -282,6 +285,7 @@ impl Tool {
             Self::Lasso => "Drag a freehand outline",
             Self::PolyLasso => "Click to add points · double-click or click the start to close · Esc cancels",
             Self::QuickSelect => "Paint over the area to select · Alt to subtract",
+            Self::ObjectSelect => "Drag a box around an object to select it · Shift adds, Alt subtracts",
             Self::MagicWand => "Click to select similar colors",
             Self::Crop => "Drag a crop box · Enter to apply · Esc to cancel",
             Self::Eyedropper => "Click to pick the foreground color · Alt for background",
@@ -355,6 +359,7 @@ pub struct ToolOptions {
     pub crop_delete_pixels: bool,
     pub pattern: usize,
     pub red_eye_darken: f32,
+    pub vertical_text: bool,
 }
 
 impl Default for ToolOptions {
@@ -393,6 +398,7 @@ impl Default for ToolOptions {
             crop_delete_pixels: true,
             pattern: 0,
             red_eye_darken: 0.5,
+            vertical_text: false,
         }
     }
 }

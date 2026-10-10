@@ -381,6 +381,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 tl.color = col;
                 changed = true;
             }
+            changed |= toggle_row(ui, "Vertical", &mut tl.vertical);
             let mut wrap = tl.box_width.is_some();
             if toggle_row(ui, "Paragraph (wrap)", &mut wrap) {
                 tl.box_width = if wrap { Some((w as f32 - tl.x).max(100.0) * 0.8) } else { None };

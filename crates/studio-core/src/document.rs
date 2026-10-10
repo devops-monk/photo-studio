@@ -785,6 +785,33 @@ impl Document {
         }
     }
 
+    /// Align the active layer's content to the selection (or the canvas).
+    /// `h`/`v`: -1 start, 0 centre, 1 end, None to leave that axis.
+    pub fn align_active(&mut self, h: Option<i8>, v: Option<i8>) {
+        let target = self.selection.as_ref().and_then(|m| m.bounds()).unwrap_or(self.bounds());
+        let Some(l) = self.active_layer() else { return };
+        let content = match &l.kind {
+            LayerKind::Text(t) => Some(crate::text::bounds(t)),
+            _ if l.is_group() => {
+                let r = self.block(self.active);
+                (r.start..r.end - 1).filter_map(|i| self.layers[i].pixels.opaque_bounds()).reduce(|a, b| a.union(&b))
+            }
+            _ => l.pixels.opaque_bounds(),
+        };
+        let Some(c) = content else { return };
+        let pick = |mode: Option<i8>, start: i32, len: u32, tstart: i32, tlen: u32| match mode {
+            Some(-1) => tstart - start,
+            Some(0) => tstart + tlen as i32 / 2 - (start + len as i32 / 2),
+            Some(_) => tstart + tlen as i32 - (start + len as i32),
+            None => 0,
+        };
+        let dx = pick(h, c.x, c.w, target.x, target.w);
+        let dy = pick(v, c.y, c.h, target.y, target.h);
+        let sel = self.selection.take();
+        self.nudge_active(dx, dy);
+        self.selection = sel;
+    }
+
     /// Move the active layer (and selection) by whole pixels.
     pub fn nudge_active(&mut self, dx: i32, dy: i32) {
         if dx == 0 && dy == 0 {
@@ -1057,6 +1084,23 @@ mod tests {
         }
         d.layers[1].render(w, h);
         assert_eq!(d.layers[1].pixels.get(4, 10).a(), 0, "disabling the blur restores the edge");
+    }
+
+    #[test]
+    fn align_to_canvas_and_selection() {
+        let mut d = Document::new(100, 100, Some(Rgba::WHITE));
+        d.add_empty_layer("dot");
+        for y in 10..20 {
+            for x in 10..20 {
+                d.layers[1].pixels.put(x, y, Rgba::BLACK);
+            }
+        }
+        d.align_active(Some(1), Some(0));
+        assert_eq!(d.layers[1].pixels.opaque_bounds(), Some(Rect::new(90, 45, 10, 10)));
+        d.set_selection(crate::select::rect_mask(100, 100, Rect::new(20, 20, 40, 40)));
+        d.align_active(Some(-1), Some(-1));
+        assert_eq!(d.layers[1].pixels.opaque_bounds(), Some(Rect::new(20, 20, 10, 10)));
+        assert!(d.selection.is_some(), "selection kept");
     }
 
     #[test]

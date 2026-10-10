@@ -216,8 +216,14 @@ pub fn select_subject(img: &Image) -> Mask {
         samples.push(img.get(0, y).to_f32());
         samples.push(img.get(w - 1, y).to_f32());
     }
+    segment(img, &samples)
+}
+
+/// Separate an object from a background described by colour `samples`.
+fn segment(img: &Image, samples: &[[f32; 4]]) -> Mask {
+    let (w, h) = img.size();
     let mut centres: Vec<[f32; 4]> = Vec::new();
-    for s in &samples {
+    for s in samples {
         if !centres.iter().any(|c| (0..3).map(|i| (c[i] - s[i]).powi(2)).sum::<f32>() < 0.01) {
             centres.push(*s);
         }
@@ -249,6 +255,38 @@ pub fn select_subject(img: &Image) -> Mask {
     let m = largest_component(&m);
     let m = fill_holes(&m);
     feather(&smooth(&m, 3.0), 1.5)
+}
+
+/// Object Selection: find the main object inside `area`.
+pub fn select_object(img: &Image, area: Rect) -> Mask {
+    let (w, _) = img.size();
+    let r = area.intersect(&img.bounds());
+    let mut out = Mask::new(w, img.height());
+    if r.w < 4 || r.h < 4 {
+        return out;
+    }
+    // The background is modelled from a margin around the box, but only where that margin
+    // lies inside the image: an object touching the image edge must not become "background".
+    let pad = (r.w.max(r.h) / 12).max(4) as i32;
+    let outer = r.inflate(pad).intersect(&img.bounds());
+    let crop = img.crop(outer);
+    let step = ((r.w + r.h) / 150).max(1) as usize;
+    let mut samples = Vec::new();
+    for y in (outer.y..outer.bottom()).step_by(step) {
+        for x in (outer.x..outer.right()).step_by(step) {
+            if !r.contains(x, y) {
+                samples.push(img.get(x as u32, y as u32).to_f32());
+            }
+        }
+    }
+    let sub = if samples.len() < 8 { select_subject(&crop) } else { segment(&crop, &samples) };
+    let d = out.data_mut();
+    for y in r.y..r.bottom() {
+        for x in r.x..r.right() {
+            d[y as usize * w as usize + x as usize] = sub.get((x - outer.x) as u32, (y - outer.y) as u32);
+        }
+    }
+    out
 }
 
 /// Keep only the largest 4-connected region.
@@ -393,6 +431,32 @@ mod tests {
         let segs = outline_segments(&m);
         let len: i32 = segs.iter().map(|(a, b)| (b.0 - a.0).abs() + (b.1 - a.1).abs()).sum();
         assert_eq!(len, 12);
+    }
+
+    #[test]
+    fn object_inside_box() {
+        let mut img = Image::filled(100, 60, Rgba::rgb(240, 240, 240));
+        for y in 20..40 {
+            for x in 10..30 {
+                img.put(x, y, Rgba::rgb(30, 30, 200));
+            }
+            for x in 60..80 {
+                img.put(x, y, Rgba::rgb(200, 30, 30));
+            }
+        }
+        let m = select_object(&img, Rect::new(50, 10, 40, 40));
+        assert!(m.get(70, 30) > 200, "the object in the box");
+        assert_eq!(m.get(20, 30), 0, "not the one outside");
+        // An object in the image corner, boxed tightly.
+        let mut img = Image::filled(60, 60, Rgba::rgb(240, 240, 240));
+        for y in 40..60 {
+            for x in 40..60 {
+                img.put(x, y, Rgba::rgb(200, 20, 20));
+            }
+        }
+        let m = select_object(&img, Rect::new(30, 30, 30, 30));
+        assert!(m.get(55, 55) > 200, "corner object found");
+        assert_eq!(m.get(33, 33), 0);
     }
 
     #[test]
