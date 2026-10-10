@@ -26,6 +26,8 @@ psd = "0.3"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+# Newer clippy lints below are unknown to older toolchains.
+unknown_lints = "allow"
 
 [workspace.lints.clippy]
 # Pixel loops read clearer with explicit indices, and nested `if`s mirror the UI structure.
@@ -38,6 +40,8 @@ too_many_arguments = "allow"
 enum_variant_names = "allow"
 new_ret_no_self = "allow"
 self_named_constructors = "allow"
+# `chunks_exact(4)` is the clearest way to walk RGBA pixels.
+chunks_exact_to_as_chunks = "allow"
 
 [profile.dev]
 opt-level = 1

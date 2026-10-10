@@ -12,8 +12,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - { runner: ubuntu-22.04, arch: x86_64 }
-          - { runner: ubuntu-22.04-arm, arch: aarch64 }
+          - runner: ubuntu-22.04
+            arch: x86_64
+          - runner: ubuntu-22.04-arm
+            arch: aarch64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -31,13 +33,16 @@ jobs:
           cargo deb -p photo-studio --no-build -o "dist/photo-studio_${V}_${{ matrix.arch }}.deb"
           packaging/linux/appimage.sh target/release/photo-studio "$V" ${{ matrix.arch }} dist
       - uses: actions/upload-artifact@v4
-        with: { name: linux-${{ matrix.arch }}, path: dist/* }
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*
   macos:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with: { targets: 'aarch64-apple-darwin,x86_64-apple-darwin' }
+        with:
+          targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
       - uses: Swatinem/rust-cache@v2
       - name: Build universal binaries
         run: |
@@ -50,8 +55,11 @@ jobs:
           packaging/macos/bundle.sh universal/photo-studio "$V" dist
           D="photo-studio-cli-$V-macos-universal"; mkdir "$D"; cp universal/photo-studio-cli LICENSE "$D/"; tar czf "dist/$D.tar.gz" "$D"
       - uses: actions/upload-artifact@v4
-        with: { name: macos, path: 'dist/*.dmg
-          dist/*.tar.gz' }
+        with:
+          name: macos
+          path: |
+            dist/*.dmg
+            dist/*.tar.gz
   windows:
     strategy:
       matrix:
@@ -60,7 +68,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with: { targets: '${{ matrix.target }}' }
+        with:
+          targets: '${{ matrix.target }}'
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release --target ${{ matrix.target }} -p photo-studio -p photo-studio-cli
       - name: Package
@@ -71,13 +80,17 @@ jobs:
           Copy-Item target/${{ matrix.target }}/release/photo-studio.exe, target/${{ matrix.target }}/release/photo-studio-cli.exe, LICENSE, README.md $d
           Compress-Archive $d "dist/$d.zip"
       - uses: actions/upload-artifact@v4
-        with: { name: windows-${{ matrix.target }}, path: dist/* }
+        with:
+          name: windows-${{ matrix.target }}
+          path: dist/*
   publish:
     needs: [linux, macos, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
-        with: { path: dist, merge-multiple: true }
+        with:
+          path: dist
+          merge-multiple: true
       - run: cd dist && sha256sum * > SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
