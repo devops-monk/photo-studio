@@ -680,7 +680,7 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     }
                 }
             }
-            Tool::Pen | Tool::DirectSelect => {
+            Tool::Pen | Tool::DirectSelect | Tool::PathSelect => {
                 if app.cv.pen.is_some()
                     && crate::widgets::primary_button(ui, &format!("{} Finish Path", ph::CHECK)).clicked()
                 {

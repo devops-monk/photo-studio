@@ -190,6 +190,8 @@ pub struct CanvasState {
     direct: Option<(usize, usize, u8)>,
     /// Rotate View drag: (start pointer angle, start rotation in degrees).
     rotate_drag: Option<(f32, f32)>,
+    /// Path Selection drag: (path index, last canvas position).
+    path_move: Option<(usize, (f32, f32))>,
     last_paint: Option<(f32, f32)>,
 }
 
@@ -210,6 +212,7 @@ impl Default for CanvasState {
             pen: None,
             direct: None,
             rotate_drag: None,
+            path_move: None,
             last_paint: None,
         }
     }
@@ -865,6 +868,47 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                     if (p.0 - a.p.0).hypot(p.1 - a.p.1) * view.zoom > 2.0 {
                         *a = Anchor::smooth(a.p, p);
                     }
+                }
+            }
+        }
+        Tool::PathSelect => {
+            if primary_pressed {
+                // Pick the path whose outline passes nearest the press.
+                let tab = &app.docs[active];
+                let probe = view.to_screen(origin);
+                let hit = tab
+                    .doc
+                    .paths
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, np)| {
+                        let d = np
+                            .path
+                            .flatten(24)
+                            .iter()
+                            .map(|q| view.to_screen(*q).distance(probe))
+                            .fold(f32::MAX, f32::min);
+                        let inside = np.path.closed
+                            && np
+                                .path
+                                .to_mask(tab.doc.width, tab.doc.height)
+                                .get_or_zero(origin.0 as i32, origin.1 as i32)
+                                > 127;
+                        (d < 8.0 || inside).then_some((d, i))
+                    })
+                    .min_by(|a, b| a.0.total_cmp(&b.0))
+                    .map(|x| x.1);
+                app.active_path = hit;
+                app.cv.path_move = hit.filter(|_| resp.drag_started()).map(|i| (i, origin));
+            }
+            if let Some((pi, last)) = app.cv.path_move {
+                if let Some(np) = app.docs[active].doc.paths.get_mut(pi) {
+                    np.path.translate(p.0 - last.0, p.1 - last.1);
+                }
+                app.cv.path_move = Some((pi, p));
+                if resp.drag_stopped() {
+                    app.cv.path_move = None;
+                    app.docs[active].commit("Move Path");
                 }
             }
         }
@@ -2027,7 +2071,13 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
     let path_col = Color32::from_rgb(0, 200, 255);
     if let Some(tab) = app.tab() {
         if let Some(np) = app.active_path.and_then(|i| tab.doc.paths.get(i)) {
-            draw_path(painter, view, &np.path, path_col, matches!(app.tool, Tool::Pen | Tool::DirectSelect));
+            draw_path(
+                painter,
+                view,
+                &np.path,
+                path_col,
+                matches!(app.tool, Tool::Pen | Tool::DirectSelect | Tool::PathSelect),
+            );
         }
     }
     if let Some(bp) = &app.cv.pen {

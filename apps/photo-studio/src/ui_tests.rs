@@ -988,3 +988,19 @@ fn rotate_view_keeps_painting_accurate() {
     assert_eq!(l.pixels.get(200, 150), Rgba::rgb(255, 0, 0), "painted along the canvas line");
     assert_eq!(l.pixels.get(150, 200), Rgba::WHITE, "not along the screen line");
 }
+
+#[test]
+fn path_selection_moves_whole_path() {
+    let mut h = harness();
+    h.state_mut().set_tool(Tool::Pen);
+    for q in [(100.0, 100.0), (200.0, 100.0), (200.0, 200.0), (100.0, 200.0), (100.0, 100.0)] {
+        click(&mut h, q);
+    }
+    h.state_mut().active_path = None;
+    h.state_mut().set_tool(Tool::PathSelect);
+    drag(&mut h, (150.0, 150.0), (200.0, 170.0), Modifiers::NONE);
+    let p = &h.state().tab().unwrap().doc.paths[0].path;
+    assert!((p.anchors[0].p.0 - 150.0).abs() < 1.5 && (p.anchors[0].p.1 - 120.0).abs() < 1.5, "{:?}", p.anchors[0].p);
+    assert_eq!(h.state().active_path, Some(0));
+    assert_eq!(h.state().tab().unwrap().history.undo_label(), Some("Move Path"));
+}

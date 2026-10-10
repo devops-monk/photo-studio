@@ -47,6 +47,7 @@ pub enum Tool {
     Sponge,
     Text,
     Pen,
+    PathSelect,
     DirectSelect,
     Rectangle,
     RoundedRect,
@@ -81,7 +82,7 @@ pub const GROUPS: &[&[Tool]] = &[
     &[Tool::Blur, Tool::Sharpen, Tool::Smudge, Tool::Liquify],
     &[Tool::Dodge, Tool::Burn, Tool::Sponge],
     &[Tool::Text],
-    &[Tool::Pen, Tool::DirectSelect],
+    &[Tool::Pen, Tool::PathSelect, Tool::DirectSelect],
     &[
         Tool::Rectangle,
         Tool::RoundedRect,
@@ -145,6 +146,7 @@ impl Tool {
             Self::Text => "Type",
             Self::Pen => "Pen",
             Self::DirectSelect => "Direct Selection",
+            Self::PathSelect => "Path Selection",
             Self::Rectangle => "Rectangle",
             Self::RoundedRect => "Rounded Rectangle",
             Self::Ellipse => "Ellipse",
@@ -201,6 +203,7 @@ impl Tool {
             Self::Text => ph::TEXT_T,
             Self::Pen => ph::PEN_NIB,
             Self::DirectSelect => ph::CURSOR,
+            Self::PathSelect => ph::NAVIGATION_ARROW,
             Self::Rectangle => ph::RECTANGLE,
             Self::RoundedRect => ph::SQUARE,
             Self::Ellipse => ph::CIRCLE,
@@ -235,7 +238,7 @@ impl Tool {
             Self::Dodge | Self::Burn | Self::Sponge => Key::O,
             Self::Text => Key::T,
             Self::Pen => Key::P,
-            Self::DirectSelect => Key::A,
+            Self::DirectSelect | Self::PathSelect => Key::A,
             Self::Rectangle
             | Self::RoundedRect
             | Self::Ellipse
@@ -332,6 +335,7 @@ impl Tool {
             Self::Text => "Click to add text, or click existing text to edit it",
             Self::Pen => "Click for corners, drag for curves · click the first point to close · Enter finishes",
             Self::DirectSelect => "Drag anchors and handles of the selected path",
+            Self::PathSelect => "Click a path to select it; drag to move the whole path",
             Self::Rectangle
             | Self::RoundedRect
             | Self::Ellipse
