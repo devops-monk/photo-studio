@@ -344,11 +344,158 @@ pub fn content_aware_fill(img: &Image, hole: &Mask) -> Image {
     out
 }
 
+/// Patch: replace the masked area with texture from `offset` away, matched to the
+/// surrounding tone (high frequencies from the source, low frequencies from the destination).
+pub fn patch(img: &Image, mask: &Mask, offset: (i32, i32)) -> Image {
+    let Some(b) = mask.bounds() else { return img.clone() };
+    let radius = (b.w.max(b.h) as f32 / 3.0).clamp(4.0, 60.0);
+    let low = crate::filters::gaussian_blur(img, radius);
+    // Low frequencies of the destination come from its border, not its (unwanted) contents.
+    let filled = content_aware_low(img, mask, radius);
+    let mut out = img.clone();
+    let w = img.width() as usize;
+    let px = out.pixels_mut();
+    for y in b.y..b.bottom() {
+        for x in b.x..b.right() {
+            let k = mask.get(x as u32, y as u32) as f32 / 255.0;
+            if k <= 0.0 {
+                continue;
+            }
+            let (sx, sy) = (x + offset.0, y + offset.1);
+            let s = img.get_clamped(sx, sy).to_f32();
+            let sl = low.get_clamped(sx, sy).to_f32();
+            let dl = filled.get(x as u32, y as u32).to_f32();
+            let i = (y as usize * w + x as usize) * 4;
+            for c in 0..3 {
+                let v = (s[c] - sl[c] + dl[c]).clamp(0.0, 1.0) * 255.0;
+                px[i + c] = (px[i + c] as f32 + (v - px[i + c] as f32) * k).round() as u8;
+            }
+        }
+    }
+    out
+}
+
+/// A smooth estimate of what the masked area "should" look like, from its border.
+fn content_aware_low(img: &Image, mask: &Mask, radius: f32) -> Image {
+    // Diffuse the surroundings into the hole, then blur.
+    let Some(b) = mask.bounds() else { return img.clone() };
+    let win = b.inflate(radius as i32 * 2).intersect(&img.bounds());
+    let mut px: Vec<[f32; 4]> = Vec::with_capacity((win.w * win.h) as usize);
+    let mut known = Vec::with_capacity((win.w * win.h) as usize);
+    for y in win.y..win.bottom() {
+        for x in win.x..win.right() {
+            px.push(img.get(x as u32, y as u32).to_f32());
+            known.push(mask.get(x as u32, y as u32) < 32);
+        }
+    }
+    let (ww, wh) = (win.w as i32, win.h as i32);
+    loop {
+        let mut changed = false;
+        let mut next = known.clone();
+        for y in 0..wh {
+            for x in 0..ww {
+                let i = (y * ww + x) as usize;
+                if known[i] {
+                    continue;
+                }
+                let mut acc = [0.0; 4];
+                let mut n = 0.0;
+                for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx >= 0 && ny >= 0 && nx < ww && ny < wh && known[(ny * ww + nx) as usize] {
+                        let c = px[(ny * ww + nx) as usize];
+                        for k in 0..4 {
+                            acc[k] += c[k];
+                        }
+                        n += 1.0;
+                    }
+                }
+                if n > 0.0 {
+                    px[i] = acc.map(|v| v / n);
+                    next[i] = true;
+                    changed = true;
+                }
+            }
+        }
+        known = next;
+        if !changed {
+            break;
+        }
+    }
+    let mut out = img.clone();
+    let mut patch_img = Image::new(win.w, win.h);
+    {
+        let d = patch_img.pixels_mut();
+        for (i, c) in px.iter().enumerate() {
+            for k in 0..4 {
+                d[i * 4 + k] = crate::color::to_u8(c[k]);
+            }
+        }
+    }
+    let blurred = crate::filters::gaussian_blur(&patch_img, radius);
+    out.blit(&blurred, win.x, win.y);
+    out
+}
+
+/// Content-Aware Move: move the masked pixels by `offset` and fill where they were.
+pub fn content_aware_move(img: &Image, mask: &Mask, offset: (i32, i32)) -> Image {
+    let moving = {
+        let mut m = img.clone();
+        let d = mask.data();
+        for (i, p) in m.pixels_mut().chunks_exact_mut(4).enumerate() {
+            p[3] = ((p[3] as u32 * d[i] as u32 + 127) / 255) as u8;
+        }
+        m
+    };
+    let mut out = content_aware_fill(img, mask);
+    let mut shifted = Image::new(img.width(), img.height());
+    shifted.blit(&moving, offset.0, offset.1);
+    crate::paint::composite_onto(&mut out, &shifted, crate::blend::BlendMode::Normal, 1.0, None);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::color::Rgba;
     use crate::geom::Rect;
+
+    #[test]
+    fn patch_takes_texture_but_keeps_tone() {
+        // Left half: fine checker on mid grey; right half: flat, darker. A red blob on the right.
+        let mut img = Image::new(80, 40);
+        for y in 0..40 {
+            for x in 0..80 {
+                let c = if x < 40 { if (x + y) % 2 == 0 { 140 } else { 100 } } else { 60 };
+                img.put(x, y, Rgba::rgb(c, c, c));
+            }
+        }
+        for y in 15..25 {
+            for x in 55..65 {
+                img.put(x, y, Rgba::rgb(255, 0, 0));
+            }
+        }
+        let m = crate::select::rect_mask(80, 40, Rect::new(53, 13, 14, 14));
+        let out = patch(&img, &m, (-40, 0));
+        let c = out.get(60, 20);
+        assert!(c.r().abs_diff(c.g()) < 30, "red gone: {c:?}");
+        // Texture alternates like the source.
+        assert_ne!(out.get(60, 20), out.get(61, 20));
+    }
+
+    #[test]
+    fn content_aware_move_moves_and_fills() {
+        let mut img = Image::filled(80, 40, Rgba::rgb(200, 200, 200));
+        for y in 15..25 {
+            for x in 10..20 {
+                img.put(x, y, Rgba::rgb(0, 0, 255));
+            }
+        }
+        let m = crate::select::rect_mask(80, 40, Rect::new(9, 14, 12, 12));
+        let out = content_aware_move(&img, &m, (40, 0));
+        assert_eq!(out.get(55, 20), Rgba::rgb(0, 0, 255), "moved");
+        assert!(out.get(15, 20).b() < 230 && out.get(15, 20).r() > 150, "old spot filled: {:?}", out.get(15, 20));
+    }
 
     #[test]
     fn fills_hole_from_surroundings() {

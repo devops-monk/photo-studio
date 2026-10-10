@@ -40,15 +40,50 @@ impl CropBox {
 }
 
 enum Drag {
-    Marquee { start: (f32, f32), cur: (f32, f32), op: SelectOp, ellipse: bool, constrain: bool },
-    Lasso { points: Vec<(f32, f32)>, op: SelectOp },
-    Magnetic { points: Vec<(f32, f32)>, op: SelectOp, edges: studio_core::Mask },
-    Move { start: (f32, f32), base: DocState, applied: (i32, i32) },
-    Pan { start_pan: Vec2, start: Pos2 },
-    Gradient { start: (f32, f32), cur: (f32, f32) },
-    Shape { start: (f32, f32), layer_id: LayerId },
-    QuickSelect { subtract: bool },
-    Remove { points: Vec<(f32, f32)> },
+    Marquee {
+        start: (f32, f32),
+        cur: (f32, f32),
+        op: SelectOp,
+        ellipse: bool,
+        constrain: bool,
+    },
+    Lasso {
+        points: Vec<(f32, f32)>,
+        op: SelectOp,
+    },
+    Magnetic {
+        points: Vec<(f32, f32)>,
+        op: SelectOp,
+        edges: studio_core::Mask,
+    },
+    Move {
+        start: (f32, f32),
+        base: DocState,
+        applied: (i32, i32),
+    },
+    Pan {
+        start_pan: Vec2,
+        start: Pos2,
+    },
+    Gradient {
+        start: (f32, f32),
+        cur: (f32, f32),
+    },
+    Shape {
+        start: (f32, f32),
+        layer_id: LayerId,
+    },
+    QuickSelect {
+        subtract: bool,
+    },
+    Remove {
+        points: Vec<(f32, f32)>,
+    },
+    /// Patch / Content-Aware Move: dragging the selection.
+    Patch {
+        start: (f32, f32),
+        cur: (f32, f32),
+    },
     Eyedrop,
 }
 
@@ -854,6 +889,54 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                     app.cv.direct = None;
                     app.docs[active].commit("Edit Path");
                 }
+            }
+        }
+        Tool::Patch | Tool::ContentMove => {
+            let inside = app.docs[active]
+                .doc
+                .selection
+                .as_ref()
+                .is_some_and(|m| m.get_or_zero(origin.0 as i32, origin.1 as i32) >= 128);
+            if primary_pressed && resp.drag_started() {
+                app.cv.drag = Some(if inside {
+                    Drag::Patch { start: origin, cur: p }
+                } else {
+                    Drag::Lasso { points: vec![origin], op: select_op(mods, SelectOp::Replace) }
+                });
+            }
+            match &mut app.cv.drag {
+                Some(Drag::Lasso { points, .. }) => {
+                    if points.last().is_none_or(|l| (l.0 - p.0).hypot(l.1 - p.1) * view.zoom > 2.0) {
+                        points.push(p);
+                    }
+                    if resp.drag_stopped() {
+                        let Some(Drag::Lasso { points, op }) = app.cv.drag.take() else { unreachable!() };
+                        finish_polygon(app, &points, op, "Lasso");
+                    }
+                }
+                Some(Drag::Patch { cur, .. }) => {
+                    *cur = p;
+                    if resp.drag_stopped() {
+                        let Some(Drag::Patch { start, cur }) = app.cv.drag.take() else { unreachable!() };
+                        let (dx, dy) = ((cur.0 - start.0).round() as i32, (cur.1 - start.1).round() as i32);
+                        let Some(sel) = app.docs[active].doc.selection.clone() else { return };
+                        if tool == Tool::Patch {
+                            app.edit_pixels(ctx, "Patch", |img, _| {
+                                *img = studio_core::inpaint::patch(img, &sel, (dx, dy))
+                            });
+                        } else {
+                            app.edit_pixels(ctx, "Content-Aware Move", |img, _| {
+                                *img = studio_core::inpaint::content_aware_move(img, &sel, (dx, dy));
+                            });
+                            // The selection follows the moved content.
+                            let tab = &mut app.docs[active];
+                            if let Some(s) = &mut tab.doc.selection {
+                                *s = studio_core::filters::shift_mask(s, dx, dy);
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         }
         Tool::Remove => {
@@ -1770,6 +1853,16 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
                 egui::FontId::proportional(11.0),
                 t.text,
             );
+        }
+        Some(Drag::Patch { start, cur }) => {
+            if let Some(b) = app.tab().and_then(|t| t.doc.selection.as_ref()).and_then(|m| m.bounds()) {
+                let (dx, dy) = (cur.0 - start.0, cur.1 - start.1);
+                let r = ERect::from_two_pos(
+                    view.to_screen((b.x as f32 + dx, b.y as f32 + dy)),
+                    view.to_screen((b.right() as f32 + dx, b.bottom() as f32 + dy)),
+                );
+                dash(&[r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom()], true);
+            }
         }
         Some(Drag::Remove { points }) => {
             let pts: Vec<Pos2> = points.iter().map(|p| view.to_screen(*p)).collect();

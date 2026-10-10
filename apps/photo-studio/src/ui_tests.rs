@@ -896,3 +896,52 @@ fn magnetic_lasso_snaps_to_edges() {
     assert!((b.x - 150).abs() <= 3 && (b.right() - 250).abs() <= 3, "snapped horizontally: {b:?}");
     assert!((b.y - 100).abs() <= 3 && (b.bottom() - 200).abs() <= 3, "snapped vertically: {b:?}");
 }
+
+#[test]
+fn content_aware_move_tool() {
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        for y in 100..140 {
+            for x in 50..90 {
+                tab.doc.layers[0].pixels.put(x, y, Rgba::rgb(0, 0, 255));
+            }
+        }
+        tab.commit("square");
+    }
+    h.state_mut().set_tool(Tool::ContentMove);
+    // First drag (outside any selection) draws a lasso around the square.
+    let a = screen(&h, 45.0, 95.0);
+    let pts = [(45.0, 95.0), (95.0, 95.0), (95.0, 145.0), (45.0, 145.0), (45.0, 96.0)];
+    let (o, z) = (screen(&h, 0.0, 0.0), h.state().tab().unwrap().zoom);
+    let to = move |q: (f32, f32)| o + egui::vec2(q.0, q.1) * z;
+    h.event(Event::PointerMoved(a));
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    for w in pts.windows(2) {
+        for i in 1..=6 {
+            let t = i as f32 / 6.0;
+            h.event(Event::PointerMoved(to((w[0].0 + (w[1].0 - w[0].0) * t, w[0].1 + (w[1].1 - w[0].1) * t))));
+            h.run_steps(1);
+        }
+    }
+    h.event(Event::PointerButton {
+        pos: to(pts[4]),
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    h.run_steps(2);
+    assert!(h.state().tab().unwrap().doc.selection.is_some());
+    // Second drag, inside the selection, moves the square 200 px right.
+    drag(&mut h, (70.0, 120.0), (270.0, 120.0), Modifiers::NONE);
+    let l = &h.state().tab().unwrap().doc.layers[0];
+    assert_eq!(l.pixels.get(270, 120), Rgba::rgb(0, 0, 255), "moved");
+    assert!(
+        l.pixels.get(70, 120).b() < 250 || l.pixels.get(70, 120).r() > 100,
+        "old spot filled: {:?}",
+        l.pixels.get(70, 120)
+    );
+    assert_eq!(h.state().tab().unwrap().history.undo_label(), Some("Content-Aware Move"));
+}

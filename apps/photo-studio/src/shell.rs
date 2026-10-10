@@ -453,6 +453,16 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 pct(ui, "Opacity", &mut o.opacity);
                 pct(ui, "Flow", &mut o.flow);
             }
+            Tool::Patch | Tool::ContentMove => {
+                label_dim(
+                    ui,
+                    if app.tool == Tool::Patch {
+                        "Draw around the area to fix, then drag the selection onto good texture"
+                    } else {
+                        "Draw around an object, then drag it to its new place"
+                    },
+                );
+            }
             Tool::Remove => {
                 label_dim(ui, "Size");
                 ui.add(egui::DragValue::new(&mut o.tip.size).range(2.0..=800.0).suffix(" px"));
