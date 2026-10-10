@@ -37,6 +37,16 @@ pub struct BrushTip {
     pub opacity_jitter: f32,
     /// Stroke smoothing (0..1): how lazily the brush follows the pointer.
     pub smoothing: f32,
+    /// Colour dynamics: random hue shift per dab (0..1 of the colour wheel).
+    pub hue_jitter: f32,
+    /// Colour dynamics: random mix towards the background colour per dab (0..1).
+    pub fg_bg_jitter: f32,
+}
+
+impl BrushTip {
+    pub fn has_color_dynamics(&self) -> bool {
+        self.hue_jitter > 0.0 || self.fg_bg_jitter > 0.0
+    }
 }
 
 impl Default for BrushTip {
@@ -52,6 +62,8 @@ impl Default for BrushTip {
             size_jitter: 0.0,
             opacity_jitter: 0.0,
             smoothing: 0.0,
+            hue_jitter: 0.0,
+            fg_bg_jitter: 0.0,
         }
     }
 }
@@ -90,6 +102,23 @@ pub fn brush_presets() -> Vec<(&'static str, BrushTip)> {
         ),
         ("Ink", BrushTip { size: 8.0, hardness: 1.0, spacing: 0.05, smoothing: 0.6, ..d }),
         ("Marker", BrushTip { size: 24.0, hardness: 0.9, roundness: 0.55, angle: -30.0, spacing: 0.06, ..d }),
+        (
+            "Confetti",
+            BrushTip { size: 14.0, hardness: 0.9, scatter: 2.0, size_jitter: 0.6, hue_jitter: 1.0, spacing: 0.6, ..d },
+        ),
+        (
+            "Foliage",
+            BrushTip {
+                size: 22.0,
+                hardness: 0.7,
+                roundness: 0.4,
+                scatter: 1.2,
+                size_jitter: 0.5,
+                fg_bg_jitter: 1.0,
+                spacing: 0.35,
+                ..d
+            },
+        ),
     ]
 }
 
@@ -166,6 +195,12 @@ pub enum StrokeKind {
     Sponge {
         saturate: bool,
         flow: f32,
+    },
+    /// Paint whose colour varies per dab (brush colour dynamics). Dabs build up directly.
+    PaintDynamic {
+        fg: Rgba,
+        bg: Rgba,
+        blend: BlendMode,
     },
     /// Liquify's Forward Warp: push pixels along the drag.
     Warp {
@@ -380,6 +415,35 @@ impl StrokeEngine {
                         for ch in 0..3 {
                             px[i + ch] = to_u8(out[ch]);
                         }
+                    }
+                }
+            }
+            StrokeKind::PaintDynamic { fg, bg, blend } => {
+                let mut c = Rgba::lerp(*fg, *bg, self.tip.fg_bg_jitter.clamp(0.0, 1.0) * rnd(5));
+                if self.tip.hue_jitter > 0.0 {
+                    let f = c.to_f32();
+                    let (hh, s, v) = crate::color::rgb_to_hsv(f[0], f[1], f[2]);
+                    let shift = (rnd(6) - 0.5) * 360.0 * self.tip.hue_jitter.clamp(0.0, 1.0);
+                    let (r, g, b) = crate::color::hsv_to_rgb(hh + shift, s, v);
+                    c = Rgba::from_f32([r, g, b, f[3]]);
+                }
+                let src = c.to_f32();
+                let k = self.flow * flow_k * self.opacity;
+                let blend = *blend;
+                let px = target.pixels_mut();
+                for y in rect.y..rect.bottom() {
+                    for x in rect.x..rect.right() {
+                        let cov = cov_at(x, y) * k;
+                        if cov <= 0.0 {
+                            continue;
+                        }
+                        let i = (y as usize * w + x as usize) * 4;
+                        let out = composite_pixel(
+                            [px[i], px[i + 1], px[i + 2], px[i + 3]],
+                            [src[0], src[1], src[2], src[3] * cov],
+                            blend,
+                        );
+                        px[i..i + 4].copy_from_slice(&out);
                     }
                 }
             }
@@ -797,6 +861,25 @@ mod tests {
         // The whole bar under the brush slides right with the drag.
         assert!((26..48).any(|x| img.get(x, 10).r() < 64), "black carried to the right");
         assert!(img.get(11, 10).r() > 128, "the bar's start was pushed away");
+    }
+
+    #[test]
+    fn color_dynamics_vary_colour() {
+        let mut img = Image::filled(200, 40, Rgba::WHITE);
+        let tip = BrushTip { size: 12.0, hardness: 1.0, spacing: 1.2, hue_jitter: 1.0, ..Default::default() };
+        let mut s = StrokeEngine::new(
+            &img,
+            StrokeKind::PaintDynamic { fg: Rgba::rgb(255, 0, 0), bg: Rgba::WHITE, blend: BlendMode::Normal },
+            tip,
+            1.0,
+            1.0,
+            None,
+        );
+        for x in 10..190 {
+            s.stroke_to(&mut img, x as f32, 20.0, 1.0);
+        }
+        let colours: std::collections::HashSet<[u8; 4]> = (10..190).step_by(14).map(|x| img.get(x, 20).0).collect();
+        assert!(colours.len() > 4, "hues vary: {colours:?}");
     }
 
     #[test]

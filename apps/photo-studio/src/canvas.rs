@@ -452,6 +452,9 @@ fn begin_stroke(app: &mut App, ctx: &egui::Context, p: (f32, f32)) -> bool {
     };
     let tip = if tool == Tool::Eraser { opts.eraser_tip } else { opts.tip };
     let (kind, label, tip) = match tool {
+        Tool::Brush if tip.has_color_dynamics() && !mask_target => {
+            (StrokeKind::PaintDynamic { fg, bg, blend: opts.brush_blend }, "Brush", tip)
+        }
         Tool::Brush => (
             StrokeKind::Paint { color: if mask_target { mask_gray(fg) } else { fg }, blend: opts.brush_blend },
             "Brush",

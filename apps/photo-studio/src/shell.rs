@@ -394,6 +394,9 @@ fn tip_controls(ui: &mut Ui, tip: &mut studio_core::paint::BrushTip, show_hardne
             pct_slider(ui, "Size jitter", &mut tip.size_jitter);
             pct_slider(ui, "Opacity jitter", &mut tip.opacity_jitter);
             pct_slider(ui, "Smoothing", &mut tip.smoothing);
+            ui.label(egui::RichText::new("Color dynamics").font(crate::theme::medium(12.0)));
+            pct_slider(ui, "Hue jitter", &mut tip.hue_jitter);
+            pct_slider(ui, "Fg/Bg jitter", &mut tip.fg_bg_jitter);
         },
     );
     label_dim(ui, "Size");
