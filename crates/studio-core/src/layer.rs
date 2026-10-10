@@ -26,6 +26,14 @@ pub enum LayerKind {
     Shape(ShapeLayer),
     Fill(FillLayer),
     Adjustment(Adjustment),
+    /// A folder of layers. Its children sit directly below it in the stack and point at it
+    /// through `Layer::parent`.
+    Group {
+        /// Pass-through groups blend their children straight into the layers below;
+        /// otherwise the group is flattened on its own first (isolated).
+        pass_through: bool,
+        collapsed: bool,
+    },
 }
 
 impl LayerKind {
@@ -36,6 +44,7 @@ impl LayerKind {
             Self::Shape(_) => "Shape",
             Self::Fill(_) => "Fill",
             Self::Adjustment(_) => "Adjustment",
+            Self::Group { .. } => "Group",
         }
     }
 
@@ -62,6 +71,8 @@ pub struct Layer {
     /// Clip to the layer below (clipping mask).
     pub clip: bool,
     pub styles: LayerStyles,
+    /// The group this layer belongs to.
+    pub parent: Option<LayerId>,
 }
 
 impl Layer {
@@ -79,14 +90,23 @@ impl Layer {
             mask_enabled: true,
             clip: false,
             styles: LayerStyles::default(),
+            parent: None,
         }
     }
 
     pub fn with_kind(id: LayerId, name: impl Into<String>, kind: LayerKind, w: u32, h: u32) -> Self {
-        let pixels = if matches!(kind, LayerKind::Adjustment(_)) { Image::new(0, 0) } else { Image::new(w, h) };
+        let pixels = if matches!(kind, LayerKind::Adjustment(_) | LayerKind::Group { .. }) {
+            Image::new(0, 0)
+        } else {
+            Image::new(w, h)
+        };
         let mut l = Layer { kind, ..Layer::raster(id, name, pixels) };
         l.render(w, h);
         l
+    }
+
+    pub fn is_group(&self) -> bool {
+        matches!(self.kind, LayerKind::Group { .. })
     }
 
     pub fn is_adjustment(&self) -> bool {
@@ -111,7 +131,7 @@ impl Layer {
             LayerKind::Fill(FillLayer::Gradient { gradient, shape, start, end }) => {
                 self.pixels = crate::paint::render_gradient(w, h, gradient, *shape, *start, *end)
             }
-            LayerKind::Raster | LayerKind::Adjustment(_) => {}
+            LayerKind::Raster | LayerKind::Adjustment(_) | LayerKind::Group { .. } => {}
         }
     }
 

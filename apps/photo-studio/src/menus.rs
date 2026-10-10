@@ -76,6 +76,9 @@ pub fn action_label(a: &Action) -> String {
         Action::MaskToggle => "Disable / Enable".into(),
         Action::MaskInvert => "Invert".into(),
         Action::ToggleClipping => "Create / Release Clipping Mask".into(),
+        Action::GroupLayers => "Group Layers".into(),
+        Action::Ungroup => "Ungroup Layers".into(),
+        Action::NewGroup => "New Group".into(),
         Action::Rasterize => "Rasterize Layer".into(),
         Action::BringToFront => "Bring to Front".into(),
         Action::BringForward => "Bring Forward".into(),
@@ -256,8 +259,12 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
                     item(ui, out, Action::NewAdjustmentLayer(a), doc);
                 }
             });
+            item(ui, out, Action::NewGroup, doc);
             item(ui, out, Action::DuplicateLayer, doc);
             item(ui, out, Action::DeleteLayer, doc && multi);
+            ui.separator();
+            item(ui, out, Action::GroupLayers, doc);
+            item(ui, out, Action::Ungroup, doc && tab.and_then(|t| t.doc.active_layer()).is_some_and(|l| l.is_group()));
             ui.separator();
             item(ui, out, Action::LayerViaCopy, doc);
             item(ui, out, Action::LayerViaCut, doc);

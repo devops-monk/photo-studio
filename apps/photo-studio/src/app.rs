@@ -364,7 +364,7 @@ impl App {
             }
         }
         match layer.kind {
-            LayerKind::Adjustment(_) | LayerKind::Fill(_) => {
+            LayerKind::Adjustment(_) | LayerKind::Fill(_) | LayerKind::Group { .. } => {
                 self.notify(ctx, "Select a pixel layer first");
                 return;
             }
@@ -759,6 +759,23 @@ impl App {
                 self.props = ParamState::default();
                 self.show_right_panel = true;
             }
+            Action::GroupLayers => {
+                self.edit("Group Layers", |d| {
+                    let n = d.unique_name("Group");
+                    d.group_active(&n);
+                });
+                self.edit_mask = false;
+            }
+            Action::NewGroup => {
+                self.edit("New Group", |d| {
+                    let n = d.unique_name("Group");
+                    d.add_layer_of_kind(&n, LayerKind::Group { pass_through: true, collapsed: false });
+                });
+                self.edit_mask = false;
+            }
+            Action::Ungroup => self.edit("Ungroup Layers", |d| {
+                d.ungroup(d.active);
+            }),
             Action::DuplicateLayer => self.edit("Duplicate Layer", |d| {
                 d.duplicate_layer(d.active);
             }),

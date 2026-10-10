@@ -182,6 +182,8 @@ struct LayerMeta {
     mask_enabled: bool,
     clip: bool,
     styles: LayerStyles,
+    #[serde(default)]
+    parent: Option<LayerId>,
 }
 
 fn png_bytes(img: &image::DynamicImage) -> Result<Vec<u8>> {
@@ -217,6 +219,7 @@ pub fn project_bytes(doc: &Document) -> Result<Vec<u8>> {
                 mask_enabled: l.mask_enabled,
                 clip: l.clip,
                 styles: l.styles.clone(),
+                parent: l.parent,
             })
             .collect(),
     };
@@ -303,6 +306,7 @@ pub fn project_from_bytes(bytes: &[u8]) -> Result<Document> {
         layer.mask_enabled = meta.mask_enabled;
         layer.clip = meta.clip;
         layer.styles = meta.styles;
+        layer.parent = meta.parent;
         doc.next_id = doc.next_id.max(meta.id + 1);
         doc.layers.push(layer);
     }
@@ -322,18 +326,54 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document> {
     let (w, h) = (psd.width(), psd.height());
     let mut doc = Document::new(w, h, None);
     doc.layers.clear();
-    for pl in psd.layers() {
+    // Groups first get ids, so layers can point at them.
+    let mut group_ids = std::collections::HashMap::new();
+    for gid in psd.group_ids_in_order() {
+        let id = doc.new_id();
+        group_ids.insert(*gid, id);
+    }
+    // The psd crate lists layers top to bottom; the document stacks bottom to top.
+    for pl in psd.layers().iter().rev() {
         let rgba = pl.rgba();
         if rgba.len() != (w * h * 4) as usize {
             continue;
         }
         let id = doc.new_id();
         let mut l = Layer::raster(id, pl.name(), Image::from_raw(w, h, rgba));
-        l.visible = pl.visible();
+        // psd 0.3 reports the flag bit that Photoshop sets for *hidden* layers as "visible".
+        l.visible = !pl.visible();
         l.opacity = pl.opacity() as f32 / 255.0;
         l.blend = BlendMode::from_name(&format!("{:?}", pl.blend_mode())).unwrap_or_default();
         l.clip = pl.is_clipping_mask();
+        l.parent = pl.parent_id().and_then(|p| group_ids.get(&p).copied());
         doc.layers.push(l);
+    }
+    // Place each group directly above its topmost member, deepest groups first.
+    let groups = psd.groups();
+    let depth = |mut g: u32| {
+        let mut d = 0;
+        while let Some(p) = groups.get(&g).and_then(|x| x.parent_id()) {
+            d += 1;
+            g = p;
+            if d > 64 {
+                break;
+            }
+        }
+        d
+    };
+    let mut order: Vec<u32> = psd.group_ids_in_order().clone();
+    order.sort_by_key(|g| std::cmp::Reverse(depth(*g)));
+    for gid in order {
+        let (Some(g), Some(&our)) = (groups.get(&gid), group_ids.get(&gid)) else { continue };
+        let Some(last) = (0..doc.layers.len()).rev().find(|&i| doc.is_descendant(i, our)) else { continue };
+        let blend = format!("{:?}", g.blend_mode());
+        let pass_through = blend.eq_ignore_ascii_case("PassThrough");
+        let mut l = Layer::with_kind(our, g.name(), LayerKind::Group { pass_through, collapsed: false }, w, h);
+        l.visible = !g.visible();
+        l.opacity = g.opacity() as f32 / 255.0;
+        l.blend = if pass_through { BlendMode::Normal } else { BlendMode::from_name(&blend).unwrap_or_default() };
+        l.parent = g.parent_id().and_then(|p| group_ids.get(&p).copied());
+        doc.layers.insert(last + 1, l);
     }
     if doc.layers.is_empty() {
         // No layer records: use the merged image.
@@ -399,18 +439,81 @@ pub fn psd_bytes(doc: &Document) -> Result<Vec<u8>> {
     be32(&mut b, 0); // colour mode data
     be32(&mut b, 0); // image resources
 
-    // Layer info.
-    let layers: Vec<&Layer> = doc.layers.iter().filter(|l| l.pixels.size() == (w, h)).collect();
+    // Layer info. Groups become Photoshop section records: a divider below the children and
+    // the group record (open/closed folder) above them.
+    enum Rec<'a> {
+        Pixels(&'a Layer),
+        /// Closes a group; carries the group's settings too, which some readers use.
+        Divider(&'a Layer),
+        Group(&'a Layer, bool),
+    }
+    let mut recs: Vec<Rec> = Vec::new();
+    for (i, l) in doc.layers.iter().enumerate() {
+        // Dividers for every group whose block starts here, outermost first.
+        let mut opening: Vec<(usize, &Layer)> = doc
+            .layers
+            .iter()
+            .enumerate()
+            .filter(|(gi, g)| g.is_group() && doc.block(*gi).start == i && doc.block(*gi).len() > 1)
+            .map(|(gi, g)| (doc.block(gi).len(), g))
+            .collect();
+        opening.sort_by_key(|(len, _)| std::cmp::Reverse(*len));
+        for (_, g) in opening {
+            recs.push(Rec::Divider(g));
+        }
+        match &l.kind {
+            LayerKind::Group { collapsed, .. } if doc.block(i).len() > 1 => recs.push(Rec::Group(l, *collapsed)),
+            _ if l.pixels.size() == (w, h) => recs.push(Rec::Pixels(l)),
+            _ => {}
+        }
+    }
     let mut records = Vec::new();
     let mut channels = Vec::new();
-    for l in &layers {
-        let mut px = l.pixels.clone();
-        if let Some(m) = l.active_mask() {
-            let d = m.data();
-            for (i, p) in px.pixels_mut().chunks_exact_mut(4).enumerate() {
-                p[3] = ((p[3] as u32 * d[i] as u32 + 127) / 255) as u8;
+    for rec in &recs {
+        let (px, name, blend, opacity, clip, visible, section): (
+            Image,
+            String,
+            BlendMode,
+            f32,
+            bool,
+            bool,
+            Option<(u32, &[u8; 4])>,
+        ) = match rec {
+            Rec::Pixels(l) => {
+                let mut px = l.pixels.clone();
+                if let Some(m) = l.active_mask() {
+                    let d = m.data();
+                    for (i, p) in px.pixels_mut().chunks_exact_mut(4).enumerate() {
+                        p[3] = ((p[3] as u32 * d[i] as u32 + 127) / 255) as u8;
+                    }
+                }
+                (px, l.name.clone(), l.blend, l.opacity, l.clip, l.visible, None)
             }
-        }
+            Rec::Divider(g) => (
+                Image::new(0, 0),
+                "</Layer group>".into(),
+                g.blend,
+                g.opacity,
+                false,
+                g.visible,
+                Some((3, psd_blend_key(g.blend))),
+            ),
+            Rec::Group(l, collapsed) => {
+                let key: &[u8; 4] = match l.kind {
+                    LayerKind::Group { pass_through: true, .. } => b"pass",
+                    _ => psd_blend_key(l.blend),
+                };
+                (
+                    Image::new(0, 0),
+                    l.name.clone(),
+                    l.blend,
+                    l.opacity,
+                    false,
+                    l.visible,
+                    Some((if *collapsed { 2 } else { 1 }, key)),
+                )
+            }
+        };
         let r = px.opaque_bounds().unwrap_or(crate::geom::Rect::new(0, 0, 0, 0));
         let crop = px.crop(r);
         let n = (r.w * r.h) as usize;
@@ -419,31 +522,44 @@ pub fn psd_bytes(doc: &Document) -> Result<Vec<u8>> {
         be32(&mut records, r.bottom() as u32);
         be32(&mut records, r.right() as u32);
         be16(&mut records, 4);
-        for (cid, _) in [(-1i16, 3usize), (0, 0), (1, 1), (2, 2)] {
+        for cid in [-1i16, 0, 1, 2] {
             records.extend_from_slice(&cid.to_be_bytes());
             be32(&mut records, 2 + n as u32);
         }
         records.extend_from_slice(b"8BIM");
-        records.extend_from_slice(psd_blend_key(l.blend));
-        records.push((l.opacity.clamp(0.0, 1.0) * 255.0).round() as u8);
-        records.push(u8::from(l.clip));
-        records.push(if l.visible { 0 } else { 2 });
+        records.extend_from_slice(match section {
+            Some((_, key)) if key == b"pass" => b"pass",
+            _ => psd_blend_key(blend),
+        });
+        records.push((opacity.clamp(0.0, 1.0) * 255.0).round() as u8);
+        records.push(u8::from(clip));
+        records.push(if visible { 0 } else { 2 });
         records.push(0);
-        let name: Vec<u8> = l.name.chars().filter(|c| c.is_ascii()).take(255).map(|c| c as u8).collect();
+        let name: Vec<u8> = name.chars().filter(|c| c.is_ascii()).take(255).map(|c| c as u8).collect();
         let mut pascal = vec![name.len() as u8];
         pascal.extend_from_slice(&name);
         while pascal.len() % 4 != 0 {
             pascal.push(0);
         }
-        be32(&mut records, 4 + 4 + pascal.len() as u32);
+        let mut extra = Vec::new();
+        if let Some((kind, key)) = section {
+            extra.extend_from_slice(b"8BIMlsct");
+            be32(&mut extra, 12);
+            be32(&mut extra, kind);
+            extra.extend_from_slice(b"8BIM");
+            extra.extend_from_slice(key);
+        }
+        be32(&mut records, 4 + 4 + pascal.len() as u32 + extra.len() as u32);
         be32(&mut records, 0); // mask data
         be32(&mut records, 0); // blending ranges
         records.extend_from_slice(&pascal);
+        records.extend_from_slice(&extra);
         for c in [3usize, 0, 1, 2] {
             be16(&mut channels, 0);
             channels.extend(crop.pixels().chunks_exact(4).map(|p| p[c]));
         }
     }
+    let layers = &recs;
     let mut layer_info = Vec::new();
     be16(&mut layer_info, layers.len() as u16);
     layer_info.extend_from_slice(&records);
@@ -513,9 +629,34 @@ mod tests {
         assert_eq!((back.width, back.height), (16, 12));
         // Adjustment layers are not written as layers.
         assert_eq!(back.layers.len(), 3);
-        assert_eq!(back.layers[1].name, "Paint");
+        let names: Vec<&str> = back.layers.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(names, ["Background", "Paint", "Title"]);
+        assert!(back.layers.iter().all(|l| l.visible));
         assert_eq!(back.layers[1].blend, BlendMode::Screen);
         assert_eq!(back.layers[1].pixels.get(3, 4), Rgba::rgb(255, 0, 0));
+    }
+
+    #[test]
+    fn psd_groups_round_trip() {
+        let mut d = Document::new(8, 8, Some(Rgba::WHITE));
+        d.add_empty_layer("Inner");
+        d.layers[1].pixels.put(2, 2, Rgba::rgb(255, 0, 0));
+        d.group_active("Folder");
+        d.layers[2].opacity = 0.5;
+        if let LayerKind::Group { pass_through, .. } = &mut d.layers[2].kind {
+            *pass_through = false;
+        }
+        let bytes = psd_bytes(&d).unwrap();
+        let back = read_psd(&bytes).unwrap();
+        let names: Vec<&str> = back.layers.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(names, ["Background", "Inner", "Folder"]);
+        assert!(back.layers[2].is_group());
+        assert_eq!(back.layers[1].parent, Some(back.layers[2].id));
+        assert!((back.layers[2].opacity - 0.5).abs() < 0.01);
+        assert!(back.layers.iter().all(|l| l.visible));
+        // PSD stores opacity in 8 bits, so allow one level of rounding.
+        let (a, b) = (back.composite(), d.composite());
+        assert!(a.pixels().iter().zip(b.pixels()).all(|(x, y)| x.abs_diff(*y) <= 1));
     }
 
     #[test]

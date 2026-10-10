@@ -918,7 +918,12 @@ fn demo_hook(app: &mut App, ctx: &egui::Context) {
     };
     tab.doc.active = 1;
     tab.doc.add_layer_of_kind("Badge", LayerKind::Shape(shape));
-    tab.doc.active = tab.doc.layers.len() - 1;
+    // Put the title and badge in a group: [bg, curves, badge, title] → group the title, pull the badge in.
+    tab.doc.active = 3;
+    tab.doc.group_active("Title card");
+    let gid = tab.doc.layers[4].id;
+    tab.doc.layers[2].parent = Some(gid);
+    tab.doc.active = 3;
     let sel =
         studio_core::select::ellipse_mask(tab.doc.width, tab.doc.height, (w * 0.55, h * 0.45), (w * 0.85, h * 0.85));
     tab.doc.set_selection(sel);

@@ -173,8 +173,19 @@ impl Document {
     }
 
     /// Insert above the active layer and make it active.
-    pub fn insert_layer(&mut self, layer: Layer) -> usize {
-        let at = if self.layers.is_empty() { 0 } else { self.active + 1 };
+    /// Insert above the active layer (inside it, if it is a group) and make it active.
+    pub fn insert_layer(&mut self, mut layer: Layer) -> usize {
+        let at = match self.layers.get(self.active) {
+            None => 0,
+            Some(a) if a.is_group() => {
+                layer.parent = Some(a.id);
+                self.active
+            }
+            Some(a) => {
+                layer.parent = a.parent;
+                self.active + 1
+            }
+        };
         self.layers.insert(at, layer);
         self.active = at;
         at
@@ -198,40 +209,200 @@ impl Document {
         self.insert_layer(layer)
     }
 
+    /// Whether `index` is inside the group `group_id` at any depth.
+    pub fn is_descendant(&self, index: usize, group_id: LayerId) -> bool {
+        let mut p = self.layers.get(index).and_then(|l| l.parent);
+        let mut guard = 0;
+        while let Some(id) = p {
+            if id == group_id {
+                return true;
+            }
+            p = self.layers.iter().find(|l| l.id == id).and_then(|l| l.parent);
+            guard += 1;
+            if guard > 64 {
+                break;
+            }
+        }
+        false
+    }
+
+    /// Nesting depth (0 for top-level layers).
+    pub fn depth(&self, index: usize) -> usize {
+        let mut d = 0;
+        let mut p = self.layers.get(index).and_then(|l| l.parent);
+        while let Some(id) = p {
+            d += 1;
+            p = self.layers.iter().find(|l| l.id == id).and_then(|l| l.parent);
+            if d > 64 {
+                break;
+            }
+        }
+        d
+    }
+
+    /// Visible, and every enclosing group visible.
+    pub fn effectively_visible(&self, index: usize) -> bool {
+        let Some(l) = self.layers.get(index) else { return false };
+        l.visible
+            && match l.parent.and_then(|p| self.index_of(p)) {
+                Some(pi) => self.effectively_visible(pi),
+                None => true,
+            }
+    }
+
+    /// Index range of a layer together with everything inside it (a group's block).
+    pub fn block(&self, index: usize) -> std::ops::Range<usize> {
+        let Some(l) = self.layers.get(index) else { return index..index };
+        if !l.is_group() {
+            return index..index + 1;
+        }
+        let id = l.id;
+        let mut start = index;
+        while start > 0 && self.is_descendant(start - 1, id) {
+            start -= 1;
+        }
+        start..index + 1
+    }
+
     pub fn duplicate_layer(&mut self, index: usize) -> Option<usize> {
-        let mut l = self.layers.get(index)?.clone();
-        l.id = self.new_id();
-        l.name = format!("{} copy", l.name);
-        self.layers.insert(index + 1, l);
-        self.active = index + 1;
-        Some(index + 1)
+        let range = self.block(index);
+        if range.is_empty() {
+            return None;
+        }
+        let mut copies: Vec<Layer> = self.layers[range.clone()].to_vec();
+        let mut remap = std::collections::HashMap::new();
+        for l in &mut copies {
+            let new = self.new_id();
+            remap.insert(l.id, new);
+            l.id = new;
+        }
+        for l in &mut copies {
+            if let Some(p) = l.parent.and_then(|p| remap.get(&p)) {
+                l.parent = Some(*p);
+            }
+        }
+        if let Some(top) = copies.last_mut() {
+            top.name = format!("{} copy", top.name);
+        }
+        let at = range.end;
+        let n = copies.len();
+        for (k, l) in copies.into_iter().enumerate() {
+            self.layers.insert(at + k, l);
+        }
+        self.active = at + n - 1;
+        Some(self.active)
     }
 
     pub fn delete_layer(&mut self, index: usize) -> bool {
-        if self.layers.len() <= 1 || index >= self.layers.len() {
+        let range = self.block(index);
+        if range.is_empty() || self.layers.len() <= range.len() {
             return false;
         }
-        self.layers.remove(index);
+        let n = range.len();
+        self.layers.drain(range.clone());
         // Deleting the active layer selects the one below it, like other editors.
-        if self.active >= index {
-            self.active = self.active.saturating_sub(1);
+        if self.active >= range.start {
+            self.active = if self.active < range.end { range.start.saturating_sub(1) } else { self.active - n };
         }
         self.active = self.active.min(self.layers.len() - 1);
         true
     }
 
+    /// Move the layer (with its contents, if a group) so it ends up at index `to` in the current
+    /// stack. It joins whatever group it lands in.
     pub fn move_layer(&mut self, from: usize, to: usize) {
         if from >= self.layers.len() || to >= self.layers.len() || from == to {
             return;
         }
-        let l = self.layers.remove(from);
-        self.layers.insert(to, l);
-        self.active = to;
+        let range = self.block(from);
+        if range.contains(&to) {
+            return;
+        }
+        let block: Vec<Layer> = self.layers.drain(range.clone()).collect();
+        let n = block.len();
+        // `to` was an index in the old stack; shift it for the removed block.
+        let mut at = if to > from { to + 1 - n } else { to };
+        at = at.min(self.layers.len());
+        let above = self.layers.get(at);
+        let parent = above.map(|a| if a.is_group() { Some(a.id) } else { a.parent }).unwrap_or(None);
+        for (k, l) in block.into_iter().enumerate() {
+            self.layers.insert(at + k, l);
+        }
+        let top = at + n - 1;
+        self.layers[top].parent = parent;
+        self.active = top;
+    }
+
+    /// Put the active layer into a new group. Returns the group's index.
+    pub fn group_active(&mut self, name: &str) -> Option<usize> {
+        let index = self.active;
+        let range = self.block(index);
+        let parent = self.layers.get(index)?.parent;
+        let id = self.new_id();
+        let mut g = Layer::with_kind(
+            id,
+            name,
+            LayerKind::Group { pass_through: true, collapsed: false },
+            self.width,
+            self.height,
+        );
+        g.parent = parent;
+        let top = range.end - 1;
+        self.layers[top].parent = Some(id);
+        self.layers.insert(range.end, g);
+        self.active = range.end;
+        Some(range.end)
+    }
+
+    /// Dissolve a group, keeping its contents in place.
+    pub fn ungroup(&mut self, index: usize) -> bool {
+        let Some(g) = self.layers.get(index) else { return false };
+        if !g.is_group() {
+            return false;
+        }
+        let (id, parent) = (g.id, g.parent);
+        for l in &mut self.layers {
+            if l.parent == Some(id) {
+                l.parent = parent;
+            }
+        }
+        self.layers.remove(index);
+        self.active = index.saturating_sub(1).min(self.layers.len().saturating_sub(1));
+        true
+    }
+
+    /// Flatten a group into one pixel layer.
+    pub fn merge_group(&mut self, index: usize) -> bool {
+        let range = self.block(index);
+        let Some(g) = self.layers.get(index) else { return false };
+        if !g.is_group() {
+            return false;
+        }
+        let mut sub: Vec<Layer> = self.layers[range.clone()].to_vec();
+        // Lift the group to the top level so its own opacity and visibility still apply.
+        if let Some(top) = sub.last_mut() {
+            top.parent = None;
+            top.visible = true;
+        }
+        let pixels = flatten(&sub, self.width, self.height);
+        let (name, parent, visible) = (g.name.clone(), g.parent, g.visible);
+        let id = self.new_id();
+        let mut l = Layer::raster(id, name, pixels);
+        l.parent = parent;
+        l.visible = visible;
+        let start = range.start;
+        self.layers.drain(range);
+        self.layers.insert(start, l);
+        self.active = start;
+        true
     }
 
     /// Merge the layer at `index` into the one below it.
     pub fn merge_down(&mut self, index: usize) -> bool {
-        if index == 0 || index >= self.layers.len() {
+        if self.layers.get(index).is_some_and(|l| l.is_group()) {
+            return self.merge_group(index);
+        }
+        if index == 0 || index >= self.layers.len() || self.layers[index - 1].is_group() {
             return false;
         }
         let mut lower = self.layers[index - 1].clone();
@@ -254,15 +425,31 @@ impl Document {
 
     /// Replace all visible layers with one merged layer.
     pub fn merge_visible(&mut self) {
-        let visible: Vec<Layer> = self.layers.iter().filter(|l| l.visible).cloned().collect();
-        if visible.len() < 2 {
+        let vis: Vec<bool> = (0..self.layers.len()).map(|i| self.effectively_visible(i)).collect();
+        let pixel_layers = vis.iter().zip(&self.layers).filter(|(v, l)| **v && !l.is_group()).count();
+        if pixel_layers < 2 {
             return;
         }
-        let merged = flatten(&visible, self.width, self.height);
-        let first = self.layers.iter().position(|l| l.visible).unwrap();
+        let merged = flatten(&self.layers, self.width, self.height);
+        let Some(first) = vis.iter().position(|v| *v) else { return };
         let id = self.new_id();
         let name = self.layers[first].name.clone();
-        self.layers.retain(|l| !l.visible);
+        let mut k = 0;
+        self.layers.retain(|_| {
+            let keep = !vis[k];
+            k += 1;
+            keep
+        });
+        // Hidden groups that lost their children go too.
+        let mut i = 0;
+        while i < self.layers.len() {
+            let gid = self.layers[i].id;
+            if self.layers[i].is_group() && !self.layers.iter().any(|l| l.parent == Some(gid)) {
+                self.layers.remove(i);
+            } else {
+                i += 1;
+            }
+        }
         let at = first.min(self.layers.len());
         self.layers.insert(at, Layer::raster(id, name, merged));
         self.active = at;
@@ -493,6 +680,18 @@ impl Document {
 
     /// Transform the active layer's pixels (Free Transform), limited to the selection if any.
     pub fn transform_active(&mut self, t: &Affine) {
+        if self.active_layer().is_some_and(|l| l.is_group()) {
+            let group = self.active;
+            let range = self.block(group);
+            let sel = self.selection.clone();
+            for i in range.start..range.end - 1 {
+                self.active = i;
+                self.selection = sel.clone();
+                self.transform_active(t);
+            }
+            self.active = group;
+            return;
+        }
         let (w, h) = (self.width, self.height);
         let sel = self.selection.clone();
         let Some(l) = self.active_layer_mut() else {
@@ -523,6 +722,18 @@ impl Document {
     /// Move the active layer (and selection) by whole pixels.
     pub fn nudge_active(&mut self, dx: i32, dy: i32) {
         if dx == 0 && dy == 0 {
+            return;
+        }
+        if self.active_layer().is_some_and(|l| l.is_group()) {
+            let group = self.active;
+            let range = self.block(group);
+            let sel = self.selection.take();
+            for i in range.start..range.end - 1 {
+                self.active = i;
+                self.nudge_active(dx, dy);
+            }
+            self.selection = sel.map(|s| crate::filters::shift_mask(&s, dx, dy));
+            self.active = group;
             return;
         }
         let sel = self.selection.clone();
@@ -630,6 +841,54 @@ mod tests {
         assert_eq!(d.layers[1].name, "B copy");
         assert!(d.delete_layer(1));
         assert_eq!(d.layers.len(), 3);
+    }
+
+    #[test]
+    fn groups_move_duplicate_delete_as_blocks() {
+        let mut d = Document::new(4, 4, Some(Rgba::WHITE));
+        d.add_empty_layer("A");
+        d.add_empty_layer("B");
+        d.active = 2;
+        let g = d.group_active("Group 1").unwrap();
+        assert_eq!(g, 3);
+        assert_eq!(d.layers[2].parent, Some(d.layers[3].id));
+        d.active = 1;
+        // A moves into the group when dropped just under it.
+        d.move_layer(1, 2);
+        assert!(d.layers.iter().filter(|l| l.parent == Some(d.layers[3].id)).count() == 2);
+        // Duplicating the group copies its children with fresh ids.
+        d.duplicate_layer(3);
+        assert_eq!(d.layers.len(), 7);
+        let new_g = d.layers[6].id;
+        assert_eq!(d.layers.iter().filter(|l| l.parent == Some(new_g)).count(), 2);
+        // Deleting a group removes its contents.
+        d.delete_layer(6);
+        assert_eq!(d.layers.len(), 4);
+        // Merging a group leaves one pixel layer in its place.
+        assert!(d.merge_down(3));
+        assert_eq!(d.layers.len(), 2);
+        assert!(!d.layers[1].is_group());
+    }
+
+    #[test]
+    fn ungroup_keeps_children() {
+        let mut d = Document::new(4, 4, Some(Rgba::WHITE));
+        d.add_empty_layer("A");
+        d.group_active("G");
+        assert!(d.ungroup(2));
+        assert_eq!(d.layers.len(), 2);
+        assert!(d.layers.iter().all(|l| l.parent.is_none()));
+    }
+
+    #[test]
+    fn new_layer_inside_selected_group() {
+        let mut d = Document::new(4, 4, Some(Rgba::WHITE));
+        d.add_empty_layer("A");
+        d.group_active("G");
+        d.add_empty_layer("B");
+        let gid = d.layers.iter().find(|l| l.is_group()).unwrap().id;
+        assert_eq!(d.layers[d.active].parent, Some(gid));
+        assert!(d.layers[d.active + 1].is_group());
     }
 
     #[test]

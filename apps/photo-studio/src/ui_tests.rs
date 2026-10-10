@@ -409,3 +409,62 @@ fn custom_shapes_render() {
     }
     assert_eq!(h.state().tab().unwrap().doc.layers.len(), 6);
 }
+
+#[test]
+fn group_shortcuts_and_hidden_group_render() {
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        tab.doc.add_empty_layer("red");
+        for y in 0..300 {
+            for x in 0..400 {
+                tab.doc.layers[1].pixels.put(x, y, Rgba::rgb(255, 0, 0));
+            }
+        }
+        tab.commit("red");
+    }
+    h.key_press_modifiers(Modifiers::COMMAND, Key::G);
+    h.run_steps(3);
+    {
+        let doc = &h.state().tab().unwrap().doc;
+        assert_eq!(doc.layers.len(), 3);
+        assert!(doc.layers[2].is_group());
+        assert_eq!(doc.layers[1].parent, Some(doc.layers[2].id));
+        assert_eq!(h.state().tab().unwrap().composite.get(5, 5), Rgba::rgb(255, 0, 0));
+    }
+    // Hiding the group hides its contents on the canvas.
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        tab.doc.layers[2].visible = false;
+        tab.commit("hide");
+    }
+    h.run_steps(3);
+    assert_eq!(h.state().tab().unwrap().composite.get(5, 5), Rgba::WHITE);
+    // Ungroup restores a flat stack.
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        tab.doc.layers[2].visible = true;
+        tab.doc.active = 2;
+    }
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::G);
+    h.run_steps(3);
+    let doc = &h.state().tab().unwrap().doc;
+    assert_eq!(doc.layers.len(), 2);
+    assert!(doc.layers.iter().all(|l| !l.is_group() && l.parent.is_none()));
+}
+
+#[test]
+fn merge_group_with_cmd_e() {
+    let mut h = harness();
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, crate::actions::Action::NewLayer);
+    h.state_mut().run(&ctx, crate::actions::Action::GroupLayers);
+    h.run_steps(2);
+    assert!(h.state().tab().unwrap().doc.active_layer().unwrap().is_group());
+    h.key_press_modifiers(Modifiers::COMMAND, Key::E);
+    h.run_steps(2);
+    let doc = &h.state().tab().unwrap().doc;
+    assert_eq!(doc.layers.len(), 2);
+    assert!(!doc.layers[1].is_group());
+    assert_eq!(h.state().tab().unwrap().history.undo_label(), Some("Merge Down"));
+}

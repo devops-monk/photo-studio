@@ -24,6 +24,7 @@ pub fn dock(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
         .resizable(true)
         .default_size(340.0)
         .min_size(180.0)
+        .max_size((ui.available_height() * 0.7).max(200.0))
         .frame(egui::Frame::new().fill(t.panel).inner_margin(egui::Margin::symmetric(10, 8)))
         .show(ui, |ui| layers(app, ui, actions));
     egui::CentralPanel::default()
@@ -338,6 +339,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
         LayerKind::Text(_) => "Properties · Type".into(),
         LayerKind::Shape(_) => "Properties · Shape".into(),
         LayerKind::Fill(_) => "Properties · Fill".into(),
+        LayerKind::Group { .. } => "Properties · Group".into(),
         LayerKind::Raster => return,
     };
     let mut changed = false;
@@ -457,6 +459,18 @@ fn properties(app: &mut App, ui: &mut Ui) {
                 }
             }
         }
+        LayerKind::Group { pass_through, .. } => {
+            label = "Group Properties";
+            changed |= toggle_row(ui, "Pass Through", pass_through);
+            label_dim(
+                ui,
+                if *pass_through {
+                    "Children blend straight into the layers below."
+                } else {
+                    "The group is flattened first, then blended as one layer; adjustments inside stay inside."
+                },
+            );
+        }
         LayerKind::Raster => {}
     });
     if changed {
@@ -567,8 +581,36 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
     let mut open_style = false;
     let mut load_sel: Option<usize> = None;
     let n = app.docs[active].doc.layers.len();
+    // Display order (top first), skipping the contents of collapsed groups.
+    let rows: Vec<usize> = {
+        let doc = &app.docs[active].doc;
+        (0..n)
+            .rev()
+            .filter(|&i| {
+                let mut p = doc.layers[i].parent;
+                while let Some(id) = p {
+                    match doc.index_of(id) {
+                        Some(gi) => {
+                            if matches!(doc.layers[gi].kind, LayerKind::Group { collapsed: true, .. }) {
+                                return false;
+                            }
+                            p = doc.layers[gi].parent;
+                        }
+                        None => break,
+                    }
+                }
+                true
+            })
+            .collect()
+    };
+    let mut toggle_collapse: Option<usize> = None;
     egui::ScrollArea::vertical().max_height(list_h).auto_shrink([false, false]).show(ui, |ui| {
-        for i in (0..n).rev() {
+        for (row_pos, &i) in rows.iter().enumerate() {
+            let depth = app.docs[active].doc.depth(i);
+            let group_state = match app.docs[active].doc.layers[i].kind {
+                LayerKind::Group { collapsed, .. } => Some(collapsed),
+                _ => None,
+            };
             let (is_active, name, visible, has_mask, mask_on, clip, kind_icon, badge, styled, locked, lid) = {
                 let tab = &app.docs[active];
                 let l = &tab.doc.layers[i];
@@ -578,6 +620,7 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     LayerKind::Shape(_) => Some(ph::POLYGON),
                     LayerKind::Fill(_) => Some(ph::PAINT_BUCKET),
                     LayerKind::Adjustment(_) => Some(ph::CIRCLE_HALF),
+                    LayerKind::Group { .. } => None,
                 };
                 (
                     i == tab.doc.active,
@@ -606,7 +649,7 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 Color32::TRANSPARENT
             };
             p.rect_filled(rect, CornerRadius::same(8), bg);
-            let mut x = rect.left() + 6.0;
+            let mut x = rect.left() + 6.0 + depth as f32 * 14.0;
             // Visibility.
             let eye = egui::Rect::from_center_size(Pos2::new(x + 10.0, rect.center().y), Vec2::splat(20.0));
             let eye_r = ui.interact(eye, ui.id().with(("eye", lid)), Sense::click());
@@ -632,9 +675,33 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 x += 14.0;
             }
             // Thumbnail.
+            if let Some(collapsed) = group_state {
+                let caret = egui::Rect::from_center_size(Pos2::new(x + 6.0, rect.center().y), Vec2::splat(16.0));
+                p.text(
+                    caret.center(),
+                    egui::Align2::CENTER_CENTER,
+                    if collapsed { ph::CARET_RIGHT } else { ph::CARET_DOWN },
+                    egui::FontId::proportional(12.0),
+                    t.text_dim,
+                );
+                if ui.interact(caret, ui.id().with(("caret", lid)), Sense::click()).clicked() {
+                    toggle_collapse = Some(i);
+                }
+                x += 14.0;
+            }
             let th = egui::Rect::from_min_size(Pos2::new(x, rect.top() + 6.0), Vec2::new(40.0, 32.0));
             let editing_pixels = is_active && !app.edit_mask;
             match thumb {
+                _ if group_state.is_some() => {
+                    let folder = if group_state == Some(true) { ph::FOLDER_SIMPLE } else { ph::FOLDER_OPEN };
+                    p.text(
+                        th.center(),
+                        egui::Align2::CENTER_CENTER,
+                        folder,
+                        egui::FontId::proportional(22.0),
+                        t.accent,
+                    );
+                }
                 Some(tex) => {
                     crate::widgets::checker(&p, th, 4.0);
                     p.image(tex, th, egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
@@ -760,8 +827,9 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
             if resp.drag_stopped() {
                 if let Some(pp) = ui.input(|i| i.pointer.hover_pos()) {
                     let dy = pp.y - rect.center().y;
-                    let steps = (dy / row_h).round() as i32;
-                    let target = (i as i32 - steps).clamp(0, n as i32 - 1) as usize;
+                    let steps = (dy / (row_h + 2.0)).round() as i32;
+                    let target_row = (row_pos as i32 + steps).clamp(0, rows.len() as i32 - 1) as usize;
+                    let target = rows[target_row];
                     if target != i {
                         drag_to = Some((i, target));
                     }
@@ -823,6 +891,11 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
             app.edit_mask = m && tab.doc.layers[i].mask.is_some();
         }
         app.props = Default::default();
+    }
+    if let Some(i) = toggle_collapse {
+        if let LayerKind::Group { collapsed, .. } = &mut tab.doc.layers[i].kind {
+            *collapsed = !*collapsed;
+        }
     }
     if let Some((from, to)) = drag_to {
         tab.doc.move_layer(from, to);
