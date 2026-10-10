@@ -167,6 +167,10 @@ pub enum StrokeKind {
         saturate: bool,
         flow: f32,
     },
+    /// Liquify's Forward Warp: push pixels along the drag.
+    Warp {
+        strength: f32,
+    },
     Blur {
         strength: f32,
     },
@@ -189,6 +193,7 @@ pub struct StrokeEngine {
     height: u32,
     dabs: u32,
     smooth: Option<(f32, f32)>,
+    prev_dab: Option<(f32, f32)>,
 }
 
 impl StrokeEngine {
@@ -216,6 +221,7 @@ impl StrokeEngine {
             height: h,
             dabs: 0,
             smooth: None,
+            prev_dab: None,
         }
     }
 
@@ -374,6 +380,30 @@ impl StrokeEngine {
                         for ch in 0..3 {
                             px[i + ch] = to_u8(out[ch]);
                         }
+                    }
+                }
+            }
+            StrokeKind::Warp { strength } => {
+                let Some((px0, py0)) = self.prev_dab.replace((cx, cy)) else {
+                    return rect;
+                };
+                let (dx, dy) = ((cx - px0) * strength, (cy - py0) * strength);
+                if dx == 0.0 && dy == 0.0 {
+                    return rect;
+                }
+                // Each pixel samples from behind the motion, weighted by the tip falloff.
+                let src = target.clone();
+                let px = target.pixels_mut();
+                for y in rect.y..rect.bottom() {
+                    for x in rect.x..rect.right() {
+                        let c = cov_at(x, y);
+                        if c <= 0.0 {
+                            continue;
+                        }
+                        let s = src.sample_bilinear(x as f32 + 0.5 - dx * c, y as f32 + 0.5 - dy * c);
+                        let i = (y as usize * w + x as usize) * 4;
+                        let out = [to_u8(s[0]), to_u8(s[1]), to_u8(s[2]), to_u8(s[3])];
+                        px[i..i + 4].copy_from_slice(&out);
                     }
                 }
             }
@@ -749,6 +779,24 @@ mod tests {
         // Scattered dabs land off the stroke line.
         let off_line = (0..80).flat_map(|x| [(x, 25u32), (x, 55u32)]).any(|(x, y)| a.get(x, y) != Rgba::WHITE);
         assert!(off_line);
+    }
+
+    #[test]
+    fn warp_pushes_pixels_along_the_drag() {
+        let mut img = Image::filled(60, 20, Rgba::WHITE);
+        for y in 0..20 {
+            for x in 10..20 {
+                img.put(x, y, Rgba::BLACK);
+            }
+        }
+        let tip = BrushTip { size: 30.0, hardness: 0.9, spacing: 0.05, ..Default::default() };
+        let mut s = StrokeEngine::new(&img, StrokeKind::Warp { strength: 1.0 }, tip, 1.0, 1.0, None);
+        for x in 15..35 {
+            s.stroke_to(&mut img, x as f32, 10.0, 1.0);
+        }
+        // The whole bar under the brush slides right with the drag.
+        assert!((26..48).any(|x| img.get(x, 10).r() < 64), "black carried to the right");
+        assert!(img.get(11, 10).r() > 128, "the bar's start was pushed away");
     }
 
     #[test]

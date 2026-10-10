@@ -468,7 +468,7 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     }
                 }
             }
-            Tool::Blur | Tool::Sharpen | Tool::Smudge => {
+            Tool::Blur | Tool::Sharpen | Tool::Smudge | Tool::Liquify => {
                 tip_controls(ui, &mut o.tip, true);
                 pct(ui, "Strength", &mut o.strength);
             }

@@ -38,6 +38,7 @@ pub enum Tool {
     Blur,
     Sharpen,
     Smudge,
+    Liquify,
     Dodge,
     Burn,
     Sponge,
@@ -73,7 +74,7 @@ pub const GROUPS: &[&[Tool]] = &[
     &[Tool::HistoryBrush],
     &[Tool::Eraser, Tool::BackgroundEraser, Tool::MagicEraser],
     &[Tool::Gradient, Tool::Bucket],
-    &[Tool::Blur, Tool::Sharpen, Tool::Smudge],
+    &[Tool::Blur, Tool::Sharpen, Tool::Smudge, Tool::Liquify],
     &[Tool::Dodge, Tool::Burn, Tool::Sponge],
     &[Tool::Text],
     &[Tool::Pen, Tool::DirectSelect],
@@ -130,6 +131,7 @@ impl Tool {
             Self::Blur => "Blur",
             Self::Sharpen => "Sharpen",
             Self::Smudge => "Smudge",
+            Self::Liquify => "Liquify (Forward Warp)",
             Self::Dodge => "Dodge",
             Self::Burn => "Burn",
             Self::Sponge => "Sponge",
@@ -181,6 +183,7 @@ impl Tool {
             Self::Blur => ph::DROP,
             Self::Sharpen => ph::DIAMOND,
             Self::Smudge => ph::HAND_POINTING,
+            Self::Liquify => ph::WAVES,
             Self::Dodge => ph::SUN_DIM,
             Self::Burn => ph::FIRE,
             Self::Sponge => ph::DROP_HALF,
@@ -214,7 +217,7 @@ impl Tool {
             Self::HistoryBrush => Key::Y,
             Self::Eraser | Self::BackgroundEraser | Self::MagicEraser => Key::E,
             Self::Gradient | Self::Bucket => Key::G,
-            Self::Blur | Self::Sharpen | Self::Smudge => Key::R,
+            Self::Blur | Self::Sharpen | Self::Smudge | Self::Liquify => Key::R,
             Self::Dodge | Self::Burn | Self::Sponge => Key::O,
             Self::Text => Key::T,
             Self::Pen => Key::P,
@@ -254,6 +257,7 @@ impl Tool {
                 | Self::Blur
                 | Self::Sharpen
                 | Self::Smudge
+                | Self::Liquify
                 | Self::Dodge
                 | Self::Burn
                 | Self::Sponge
@@ -306,6 +310,7 @@ impl Tool {
             Self::Gradient => "Drag to draw a gradient",
             Self::Bucket => "Click to fill similar colors",
             Self::Blur | Self::Sharpen | Self::Smudge => "Paint to soften, sharpen or smear",
+            Self::Liquify => "Drag to push pixels along · lower strength for subtle reshaping",
             Self::Dodge | Self::Burn | Self::Sponge => "Paint to lighten, darken or change saturation",
             Self::Text => "Click to add text, or click existing text to edit it",
             Self::Pen => "Click for corners, drag for curves · click the first point to close · Enter finishes",

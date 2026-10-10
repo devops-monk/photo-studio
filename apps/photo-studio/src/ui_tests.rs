@@ -830,3 +830,25 @@ fn remove_tool_and_content_aware_fill() {
     let l = &h.state().tab().unwrap().doc.layers[0];
     assert!((140..160).all(|y| (190..210).all(|x| l.pixels.get(x, y).g() < 140)), "filled");
 }
+
+#[test]
+fn liquify_pushes_pixels() {
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        for y in 0..300 {
+            for x in 150..200 {
+                tab.doc.layers[0].pixels.put(x, y, Rgba::BLACK);
+            }
+        }
+        tab.commit("bar");
+    }
+    h.state_mut().set_tool(Tool::Liquify);
+    h.state_mut().opts.tip.size = 80.0;
+    h.state_mut().opts.strength = 1.0;
+    drag(&mut h, (190.0, 150.0), (260.0, 150.0), Modifiers::NONE);
+    let l = &h.state().tab().unwrap().doc.layers[0];
+    assert!((205..290).any(|x| l.pixels.get(x, 150).r() < 64), "black pushed past the bar's right edge");
+    assert_eq!(l.pixels.get(215, 20), Rgba::WHITE, "outside the brush unchanged");
+    assert_eq!(h.state().tab().unwrap().history.undo_label(), Some("Liquify"));
+}

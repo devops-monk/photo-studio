@@ -446,6 +446,11 @@ fn begin_stroke(app: &mut App, ctx: &egui::Context, p: (f32, f32)) -> bool {
         Tool::Blur => (StrokeKind::Blur { strength: opts.strength }, "Blur Tool", tip),
         Tool::Sharpen => (StrokeKind::Sharpen { strength: opts.strength }, "Sharpen Tool", tip),
         Tool::Smudge => (StrokeKind::Smudge { strength: opts.strength }, "Smudge", tip),
+        Tool::Liquify => (
+            StrokeKind::Warp { strength: opts.strength },
+            "Liquify",
+            BrushTip { spacing: 0.04, hardness: tip.hardness.min(0.5), ..tip },
+        ),
         Tool::Dodge => (StrokeKind::Dodge { range: opts.tone_range, exposure: opts.exposure }, "Dodge", tip),
         Tool::Burn => (StrokeKind::Burn { range: opts.tone_range, exposure: opts.exposure }, "Burn", tip),
         Tool::Sponge => (StrokeKind::Sponge { saturate: opts.sponge_saturate, flow: opts.flow }, "Sponge", tip),
