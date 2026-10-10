@@ -15,6 +15,7 @@ pub mod gradient;
 pub mod histogram;
 pub mod history;
 pub mod image;
+pub mod inpaint;
 pub mod io;
 pub mod layer;
 pub mod paint;

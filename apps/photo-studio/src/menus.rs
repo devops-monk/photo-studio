@@ -42,6 +42,7 @@ pub fn action_label(a: &Action) -> String {
         },
         Action::Clear => "Clear".into(),
         Action::Fill => "Fill…".into(),
+        Action::ContentAwareFill => "Content-Aware Fill".into(),
         Action::Stroke => "Stroke…".into(),
         Action::FreeTransform => "Free Transform".into(),
         Action::DefinePattern => "Define Pattern".into(),
@@ -249,6 +250,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::Clear, doc);
             ui.separator();
             item(ui, out, Action::Fill, doc);
+            item(ui, out, Action::ContentAwareFill, has_sel);
             item(ui, out, Action::Stroke, has_sel);
             ui.separator();
             item(ui, out, Action::FreeTransform, doc);
@@ -475,6 +477,7 @@ pub fn all_commands() -> Vec<Action> {
         Action::Align(None, Some(1)),
         Action::Clear,
         Action::Fill,
+        Action::ContentAwareFill,
         Action::Stroke,
         Action::FreeTransform,
         Action::DefinePattern,

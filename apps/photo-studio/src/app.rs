@@ -714,6 +714,17 @@ impl App {
             }
             Action::Align(h, v) => self.edit("Align", |d| d.align_active(h, v)),
             Action::Clear => self.edit_pixels(ctx, "Clear", |img, sel| img.clear(sel)),
+            Action::ContentAwareFill => {
+                if self.tab().is_some_and(|t| t.doc.selection.is_some()) {
+                    self.edit_pixels(ctx, "Content-Aware Fill", |img, sel| {
+                        if let Some(m) = sel {
+                            *img = studio_core::inpaint::content_aware_fill(img, m);
+                        }
+                    });
+                } else {
+                    self.notify(ctx, "Select the area to fill first");
+                }
+            }
             Action::Fill => {
                 if has_doc {
                     self.dialog = Some(Dialog::fill());
@@ -1362,6 +1373,7 @@ fn recordable(a: &Action) -> bool {
             | Action::MergeDown
             | Action::Flatten
             | Action::Clear
+            | Action::ContentAwareFill
             | Action::Rasterize
             | Action::ConvertToSmart
             | Action::NewAdjustmentLayer(_)

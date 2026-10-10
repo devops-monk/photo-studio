@@ -47,6 +47,7 @@ enum Drag {
     Gradient { start: (f32, f32), cur: (f32, f32) },
     Shape { start: (f32, f32), layer_id: LayerId },
     QuickSelect { subtract: bool },
+    Remove { points: Vec<(f32, f32)> },
     Eyedrop,
 }
 
@@ -828,6 +829,44 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                 if resp.drag_stopped() {
                     app.cv.direct = None;
                     app.docs[active].commit("Edit Path");
+                }
+            }
+        }
+        Tool::Remove => {
+            if primary_pressed {
+                app.cv.drag = Some(Drag::Remove { points: vec![origin, p] });
+            }
+            if let Some(Drag::Remove { points }) = &mut app.cv.drag {
+                if points.last().is_none_or(|l| (l.0 - p.0).hypot(l.1 - p.1) * view.zoom > 2.0) {
+                    points.push(p);
+                }
+                if resp.drag_stopped() || resp.clicked() {
+                    let Some(Drag::Remove { points }) = app.cv.drag.take() else { unreachable!() };
+                    let size = app.opts.tip.size.max(2.0);
+                    let Some(tab) = app.tab() else { return };
+                    let (w, h) = (tab.doc.width, tab.doc.height);
+                    let mut pb = tiny_skia::PathBuilder::new();
+                    pb.move_to(points[0].0, points[0].1);
+                    for q in &points[1..] {
+                        pb.line_to(q.0, q.1);
+                    }
+                    pb.line_to(points.last().unwrap().0 + 0.01, points.last().unwrap().1);
+                    if let Some(path) = pb.finish() {
+                        let mut stroke = studio_core::shape::stroke_mask(&path, size, w, h);
+                        // Round the ends, as the brush looks.
+                        for q in [points[0], *points.last().unwrap()] {
+                            let dot = select::ellipse_mask(
+                                w,
+                                h,
+                                (q.0 - size / 2.0, q.1 - size / 2.0),
+                                (q.0 + size / 2.0, q.1 + size / 2.0),
+                            );
+                            stroke = select::combine(Some(&stroke), dot, SelectOp::Add);
+                        }
+                        app.edit_pixels(ctx, "Remove", |img, _| {
+                            *img = studio_core::inpaint::content_aware_fill(img, &stroke);
+                        });
+                    }
                 }
             }
         }
@@ -1707,6 +1746,11 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
                 egui::FontId::proportional(11.0),
                 t.text,
             );
+        }
+        Some(Drag::Remove { points }) => {
+            let pts: Vec<Pos2> = points.iter().map(|p| view.to_screen(*p)).collect();
+            let width = (app.opts.tip.size * view.zoom).max(2.0);
+            painter.add(Shape::line(pts, Stroke::new(width, Color32::from_rgba_unmultiplied(255, 45, 85, 110))));
         }
         Some(Drag::Lasso { points, .. }) => {
             let pts: Vec<Pos2> = points.iter().map(|p| view.to_screen(*p)).collect();

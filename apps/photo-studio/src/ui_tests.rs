@@ -792,3 +792,41 @@ fn record_play_and_batch_actions() {
     assert_eq!(out.get(1, 1), Rgba::BLACK);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+fn striped_with_blob(h: &mut Harness<'static, App>) {
+    let tab = h.state_mut().tab_mut().unwrap();
+    for y in 0..300 {
+        for x in 0..400 {
+            let c = if (y / 10) % 2 == 0 { Rgba::rgb(220, 60, 40) } else { Rgba::rgb(30, 90, 200) };
+            tab.doc.layers[0].pixels.put(x, y, c);
+        }
+    }
+    for y in 140..160 {
+        for x in 190..210 {
+            tab.doc.layers[0].pixels.put(x, y, Rgba::rgb(0, 255, 0));
+        }
+    }
+    tab.commit("setup");
+}
+
+#[test]
+fn remove_tool_and_content_aware_fill() {
+    let mut h = harness();
+    striped_with_blob(&mut h);
+    h.state_mut().set_tool(Tool::Remove);
+    h.state_mut().opts.tip.size = 40.0;
+    drag(&mut h, (190.0, 150.0), (210.0, 150.0), Modifiers::NONE);
+    let l = &h.state().tab().unwrap().doc.layers[0];
+    assert!((140..160).all(|y| (190..210).all(|x| l.pixels.get(x, y).g() < 140)), "blob removed");
+    assert_eq!(h.state().tab().unwrap().history.undo_label(), Some("Remove"));
+
+    // The same through a selection and Edit › Content-Aware Fill.
+    let mut h = harness();
+    striped_with_blob(&mut h);
+    h.state_mut().set_tool(Tool::RectMarquee);
+    drag(&mut h, (185.0, 135.0), (215.0, 165.0), Modifiers::NONE);
+    h.key_press_modifiers(Modifiers::SHIFT, Key::Backspace);
+    h.run_steps(2);
+    let l = &h.state().tab().unwrap().doc.layers[0];
+    assert!((140..160).all(|y| (190..210).all(|x| l.pixels.get(x, y).g() < 140)), "filled");
+}

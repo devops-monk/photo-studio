@@ -453,6 +453,11 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 pct(ui, "Opacity", &mut o.opacity);
                 pct(ui, "Flow", &mut o.flow);
             }
+            Tool::Remove => {
+                label_dim(ui, "Size");
+                ui.add(egui::DragValue::new(&mut o.tip.size).range(2.0..=800.0).suffix(" px"));
+                label_dim(ui, "Paint over what should disappear · Edit › Content-Aware Fill works on selections");
+            }
             Tool::CloneStamp | Tool::Heal | Tool::SpotHeal => {
                 tip_controls(ui, &mut o.tip, true);
                 if app.tool != Tool::SpotHeal {
