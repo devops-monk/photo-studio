@@ -770,6 +770,7 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
     };
     let mut toggle_collapse: Option<usize> = None;
     let mut set_label: Option<(usize, Option<u8>)> = None;
+    let mut multi_click: Option<(usize, bool)> = None;
     egui::ScrollArea::vertical().max_height(list_h).auto_shrink([false, false]).show(ui, |ui| {
         for (row_pos, &i) in rows.iter().enumerate() {
             let depth = app.docs[active].doc.depth(i);
@@ -808,7 +809,8 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
             let row_h = 44.0;
             let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), row_h), Sense::click_and_drag());
             let p = ui.painter_at(rect);
-            let bg = if is_active {
+            let in_multi = app.docs[active].multi.len() > 1 && app.docs[active].multi.contains(&i);
+            let bg = if is_active || in_multi {
                 t.accent_soft
             } else if resp.hovered() {
                 t.hover
@@ -984,8 +986,13 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 }
             }
             if resp.clicked() {
-                select = Some(i);
-                select_mask = Some(false);
+                let m = ui.input(|inp| inp.modifiers);
+                if m.command || m.shift {
+                    multi_click = Some((i, m.shift));
+                } else {
+                    select = Some(i);
+                    select_mask = Some(false);
+                }
             }
             if resp.double_clicked() {
                 ui.data_mut(|d| d.insert_temp(renaming_id, name.clone()));
@@ -1072,7 +1079,26 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
         tab.doc.layers[i].visible = !tab.doc.layers[i].visible;
         tab.commit(if tab.doc.layers[i].visible { "Show Layer" } else { "Hide Layer" });
     }
+    if let Some((i, range)) = multi_click {
+        let cur = tab.doc.active;
+        if tab.multi.is_empty() {
+            tab.multi.push(cur);
+        }
+        if range {
+            let (a, b) = (cur.min(i), cur.max(i));
+            tab.multi = (a..=b).collect();
+        } else if let Some(pos) = tab.multi.iter().position(|&k| k == i) {
+            if tab.multi.len() > 1 {
+                tab.multi.remove(pos);
+            }
+        } else {
+            tab.multi.push(i);
+        }
+        tab.doc.active = if tab.multi.contains(&i) { i } else { *tab.multi.last().unwrap_or(&cur) };
+        app.edit_mask = false;
+    }
     if let Some(i) = select {
+        tab.multi.clear();
         if tab.doc.active != i {
             app.stroke = None;
         }

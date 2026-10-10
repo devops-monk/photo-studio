@@ -678,6 +678,12 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                             actions.push(Action::Align(h, v));
                         }
                     }
+                    if icon_button(ui, ph::COLUMNS, "Distribute horizontally (3+ layers)", false, 26.0).clicked() {
+                        actions.push(Action::Distribute(true));
+                    }
+                    if icon_button(ui, ph::ROWS, "Distribute vertically (3+ layers)", false, 26.0).clicked() {
+                        actions.push(Action::Distribute(false));
+                    }
                 }
             }
             Tool::Pen | Tool::DirectSelect | Tool::PathSelect => {

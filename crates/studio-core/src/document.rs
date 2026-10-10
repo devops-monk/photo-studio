@@ -785,6 +785,108 @@ impl Document {
         }
     }
 
+    /// Bounds of a layer's visible content (a group's: all of its children).
+    pub fn content_bounds(&self, index: usize) -> Option<Rect> {
+        let l = self.layers.get(index)?;
+        match &l.kind {
+            LayerKind::Text(t) => Some(crate::text::bounds(t)),
+            _ if l.is_group() => {
+                let r = self.block(index);
+                (r.start..r.end - 1).filter_map(|i| self.content_bounds(i)).reduce(|a, b| a.union(&b))
+            }
+            _ => l.pixels.opaque_bounds(),
+        }
+    }
+
+    /// Move layer `index` by whole pixels without disturbing the active layer or selection.
+    pub fn nudge_layer(&mut self, index: usize, dx: i32, dy: i32) {
+        let (active, sel) = (self.active, self.selection.take());
+        self.active = index;
+        self.nudge_active(dx, dy);
+        self.active = active;
+        self.selection = sel;
+    }
+
+    /// Align several layers: to the selection if there is one, otherwise to each other
+    /// (the bounds of them all), or to the canvas when only one is given.
+    pub fn align_layers(&mut self, indices: &[usize], h: Option<i8>, v: Option<i8>) {
+        let contents: Vec<(usize, Rect)> =
+            indices.iter().filter_map(|&i| self.content_bounds(i).map(|b| (i, b))).collect();
+        let target = match (&self.selection, contents.len()) {
+            (Some(m), _) if m.bounds().is_some() => m.bounds().unwrap(),
+            (_, n) if n > 1 => contents.iter().map(|c| c.1).reduce(|a, b| a.union(&b)).unwrap(),
+            _ => self.bounds(),
+        };
+        let pick = |mode: Option<i8>, start: i32, len: u32, tstart: i32, tlen: u32| match mode {
+            Some(-1) => tstart - start,
+            Some(0) => tstart + tlen as i32 / 2 - (start + len as i32 / 2),
+            Some(_) => tstart + tlen as i32 - (start + len as i32),
+            None => 0,
+        };
+        for (i, c) in contents {
+            self.nudge_layer(i, pick(h, c.x, c.w, target.x, target.w), pick(v, c.y, c.h, target.y, target.h));
+        }
+    }
+
+    /// Space layer centres evenly between the outermost two.
+    pub fn distribute_layers(&mut self, indices: &[usize], horizontal: bool) {
+        let mut items: Vec<(usize, f32)> = indices
+            .iter()
+            .filter_map(|&i| {
+                self.content_bounds(i).map(|b| {
+                    (i, if horizontal { b.x as f32 + b.w as f32 / 2.0 } else { b.y as f32 + b.h as f32 / 2.0 })
+                })
+            })
+            .collect();
+        if items.len() < 3 {
+            return;
+        }
+        items.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let (first, last) = (items[0].1, items[items.len() - 1].1);
+        let step = (last - first) / (items.len() - 1) as f32;
+        for (k, &(i, c)) in items.iter().enumerate() {
+            let d = (first + step * k as f32 - c).round() as i32;
+            if horizontal { self.nudge_layer(i, d, 0) } else { self.nudge_layer(i, 0, d) }
+        }
+    }
+
+    /// Put several layers into one new group, keeping their stacking order.
+    pub fn group_layers(&mut self, indices: &[usize], name: &str) -> Option<usize> {
+        let mut ids: Vec<LayerId> = indices.iter().filter_map(|&i| self.layers.get(i).map(|l| l.id)).collect();
+        if ids.is_empty() {
+            return None;
+        }
+        // Gather the blocks (bottom to top) right under the topmost selected layer.
+        ids.sort_by_key(|id| self.index_of(*id).unwrap_or(0));
+        let top_id = *ids.last().unwrap();
+        for id in ids.iter().rev().skip(1) {
+            let (Some(from), Some(top)) = (self.index_of(*id), self.index_of(top_id)) else { continue };
+            let range = self.block(from);
+            let block: Vec<Layer> = self.layers.drain(range.clone()).collect();
+            let top = if top > from { top - block.len() } else { top };
+            let at = self.block(top).start;
+            for (k, l) in block.into_iter().enumerate() {
+                self.layers.insert(at + k, l);
+            }
+        }
+        let top = self.index_of(top_id)?;
+        let parent = self.layers[top].parent;
+        for id in &ids {
+            if let Some(i) = self.index_of(*id) {
+                self.layers[i].parent = parent;
+            }
+        }
+        self.active = top;
+        let gi = self.group_active(name)?;
+        let gid = self.layers[gi].id;
+        for id in &ids {
+            if let Some(i) = self.index_of(*id) {
+                self.layers[i].parent = Some(gid);
+            }
+        }
+        Some(gi)
+    }
+
     /// Align the active layer's content to the selection (or the canvas).
     /// `h`/`v`: -1 start, 0 centre, 1 end, None to leave that axis.
     pub fn align_active(&mut self, h: Option<i8>, v: Option<i8>) {
@@ -1101,6 +1203,35 @@ mod tests {
         d.align_active(Some(-1), Some(-1));
         assert_eq!(d.layers[1].pixels.opaque_bounds(), Some(Rect::new(20, 20, 10, 10)));
         assert!(d.selection.is_some(), "selection kept");
+    }
+
+    #[test]
+    fn multi_layer_align_distribute_group() {
+        let mut d = Document::new(200, 100, Some(Rgba::WHITE));
+        for (k, x) in [10u32, 40, 150].iter().enumerate() {
+            d.add_empty_layer(&format!("dot{k}"));
+            let i = d.active;
+            for y in 20 + k as u32 * 20..30 + k as u32 * 20 {
+                for xx in *x..x + 10 {
+                    d.layers[i].pixels.put(xx, y, Rgba::BLACK);
+                }
+            }
+        }
+        // Align tops to each other.
+        d.align_layers(&[1, 2, 3], None, Some(-1));
+        for i in 1..4 {
+            assert_eq!(d.content_bounds(i).unwrap().y, 20);
+        }
+        // Distribute: the middle one moves to halfway.
+        d.distribute_layers(&[1, 2, 3], true);
+        assert_eq!(d.content_bounds(2).unwrap().x, 80);
+        // Group the outer two; the middle stays outside.
+        let g = d.group_layers(&[1, 3], "Pair").unwrap();
+        let gid = d.layers[g].id;
+        let inside: Vec<&str> = d.layers.iter().filter(|l| l.parent == Some(gid)).map(|l| l.name.as_str()).collect();
+        assert_eq!(inside, ["dot0", "dot2"]);
+        assert!(d.layers.iter().any(|l| l.name == "dot1" && l.parent.is_none()));
+        assert_eq!(d.content_bounds(g).unwrap().x, 10);
     }
 
     #[test]

@@ -28,6 +28,8 @@ pub struct DocTab {
     pub zoom: f32,
     /// Offset of the image centre from the viewport centre, in screen points.
     pub pan: egui::Vec2,
+    /// Extra layers selected with ⌘/⇧-click (indices, always including the active one).
+    pub multi: Vec<usize>,
     /// View rotation in degrees (Rotate View); the document itself is unchanged.
     pub rotation: f32,
     pub fit_pending: bool,
@@ -61,6 +63,7 @@ impl DocTab {
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
             rotation: 0.0,
+            multi: Vec::new(),
             fit_pending: true,
             compositor: Compositor::new(),
             composite_gen: 0,
@@ -102,6 +105,18 @@ impl DocTab {
         if self.composite.size() != (self.doc.width, self.doc.height) {
             self.tiles_stale = true;
         }
+    }
+
+    /// The selected layers: several after ⌘/⇧-click, otherwise just the active one.
+    pub fn selected_layers(&self) -> Vec<usize> {
+        let n = self.doc.layers.len();
+        let mut v: Vec<usize> = self.multi.iter().copied().filter(|&i| i < n).collect();
+        if v.len() < 2 {
+            return vec![self.doc.active];
+        }
+        v.sort_unstable();
+        v.dedup();
+        v
     }
 
     /// Record an edit in history.

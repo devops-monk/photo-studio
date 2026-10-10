@@ -1004,3 +1004,51 @@ fn path_selection_moves_whole_path() {
     assert_eq!(h.state().active_path, Some(0));
     assert_eq!(h.state().tab().unwrap().history.undo_label(), Some("Move Path"));
 }
+
+#[test]
+fn multi_layer_selection_actions() {
+    use crate::actions::Action;
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        for (k, x) in [20u32, 100, 300].iter().enumerate() {
+            tab.doc.add_empty_layer(&format!("dot{k}"));
+            let i = tab.doc.active;
+            for y in 40 + k as u32 * 30..60 + k as u32 * 30 {
+                for xx in *x..x + 20 {
+                    tab.doc.layers[i].pixels.put(xx, y, Rgba::BLACK);
+                }
+            }
+        }
+        tab.multi = vec![1, 2, 3];
+        tab.commit("dots");
+    }
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, Action::Align(None, Some(-1)));
+    h.state_mut().run(&ctx, Action::Distribute(true));
+    {
+        let d = &h.state().tab().unwrap().doc;
+        assert!((1..4).all(|i| d.content_bounds(i).unwrap().y == 40), "tops aligned");
+        assert_eq!(d.content_bounds(2).unwrap().x, 160, "middle distributed");
+    }
+    // The Move tool drags all three.
+    h.state_mut().set_tool(Tool::Move);
+    drag(&mut h, (30.0, 50.0), (30.0, 150.0), Modifiers::NONE);
+    {
+        let d = &h.state().tab().unwrap().doc;
+        assert!((1..4).all(|i| d.content_bounds(i).unwrap().y == 140), "all moved together");
+    }
+    // Group two of them.
+    h.state_mut().tab_mut().unwrap().multi = vec![1, 3];
+    h.state_mut().run(&ctx, Action::GroupLayers);
+    {
+        let d = &h.state().tab().unwrap().doc;
+        let g = d.layers.iter().find(|l| l.is_group()).expect("group");
+        assert_eq!(d.layers.iter().filter(|l| l.parent == Some(g.id)).count(), 2);
+    }
+    // Delete a multi-selection.
+    let n = h.state().tab().unwrap().doc.layers.len();
+    h.state_mut().tab_mut().unwrap().multi = vec![1, 2];
+    h.state_mut().run(&ctx, Action::DeleteLayer);
+    assert_eq!(h.state().tab().unwrap().doc.layers.len(), n - 2);
+}

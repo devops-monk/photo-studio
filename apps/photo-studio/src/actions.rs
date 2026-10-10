@@ -30,6 +30,7 @@ pub enum Action {
     PasteInPlace,
     PasteInto,
     Align(Option<i8>, Option<i8>),
+    Distribute(bool),
     Clear,
     Fill,
     ContentAwareFill,

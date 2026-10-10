@@ -712,7 +712,18 @@ impl App {
                     self.notify(ctx, "Make a selection to paste into");
                 }
             }
-            Action::Align(h, v) => self.edit("Align", |d| d.align_active(h, v)),
+            Action::Align(h, v) => {
+                let sel = self.tab().map(|t| t.selected_layers()).unwrap_or_default();
+                self.edit("Align", |d| d.align_layers(&sel, h, v));
+            }
+            Action::Distribute(horizontal) => {
+                let sel = self.tab().map(|t| t.selected_layers()).unwrap_or_default();
+                if sel.len() < 3 {
+                    self.notify(ctx, "Select three or more layers to distribute (⌘-click in Layers)");
+                } else {
+                    self.edit("Distribute", |d| d.distribute_layers(&sel, horizontal));
+                }
+            }
             Action::Clear => self.edit_pixels(ctx, "Clear", |img, sel| img.clear(sel)),
             Action::ContentAwareFill => {
                 if self.tab().is_some_and(|t| t.doc.selection.is_some()) {
@@ -1003,10 +1014,18 @@ impl App {
                 self.show_right_panel = true;
             }
             Action::GroupLayers => {
+                let sel = self.tab().map(|t| t.selected_layers()).unwrap_or_default();
                 self.edit("Group Layers", |d| {
                     let n = d.unique_name("Group");
-                    d.group_active(&n);
+                    if sel.len() > 1 {
+                        d.group_layers(&sel, &n);
+                    } else {
+                        d.group_active(&n);
+                    }
                 });
+                if let Some(t) = self.tab_mut() {
+                    t.multi.clear();
+                }
                 self.edit_mask = false;
             }
             Action::NewGroup => {
@@ -1024,9 +1043,19 @@ impl App {
             }),
             Action::DeleteLayer => {
                 if self.tab().is_some_and(|t| t.doc.layers.len() > 1) {
-                    self.edit("Delete Layer", |d| {
-                        d.delete_layer(d.active);
+                    let sel = self.tab().map(|t| t.selected_layers()).unwrap_or_default();
+                    let ids: Vec<_> =
+                        self.tab().map(|t| sel.iter().map(|&i| t.doc.layers[i].id).collect()).unwrap_or_default();
+                    self.edit(if ids.len() > 1 { "Delete Layers" } else { "Delete Layer" }, |d| {
+                        for id in &ids {
+                            if let Some(i) = d.index_of(*id) {
+                                d.delete_layer(i);
+                            }
+                        }
                     });
+                    if let Some(t) = self.tab_mut() {
+                        t.multi.clear();
+                    }
                     self.edit_mask = false;
                 }
             }

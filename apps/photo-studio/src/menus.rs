@@ -40,6 +40,8 @@ pub fn action_label(a: &Action) -> String {
             (None, Some(_)) => "Align Bottom Edges".into(),
             _ => "Center".into(),
         },
+        Action::Distribute(true) => "Distribute Horizontal Centers".into(),
+        Action::Distribute(false) => "Distribute Vertical Centers".into(),
         Action::Clear => "Clear".into(),
         Action::Fill => "Fill…".into(),
         Action::ContentAwareFill => "Content-Aware Fill".into(),
@@ -348,6 +350,9 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
                 ] {
                     item(ui, out, Action::Align(h, v), doc);
                 }
+                ui.separator();
+                item(ui, out, Action::Distribute(true), doc);
+                item(ui, out, Action::Distribute(false), doc);
             });
             ui.menu_button("Arrange", |ui| {
                 item(ui, out, Action::BringToFront, doc);
@@ -477,6 +482,8 @@ pub fn all_commands() -> Vec<Action> {
         Action::Align(None, Some(-1)),
         Action::Align(None, Some(0)),
         Action::Align(None, Some(1)),
+        Action::Distribute(true),
+        Action::Distribute(false),
         Action::Clear,
         Action::Fill,
         Action::ContentAwareFill,

@@ -1273,7 +1273,14 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                 if (dx, dy) != *applied {
                     let tab = &mut app.docs[active];
                     tab.doc.restore(base);
-                    tab.doc.nudge_active(dx, dy);
+                    let sel = tab.selected_layers();
+                    if sel.len() > 1 {
+                        for i in sel {
+                            tab.doc.nudge_layer(i, dx, dy);
+                        }
+                    } else {
+                        tab.doc.nudge_active(dx, dy);
+                    }
                     tab.invalidate_all();
                     *applied = (dx, dy);
                 }
