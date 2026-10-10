@@ -31,6 +31,11 @@ pub struct Prefs {
     pub swatches: Vec<Rgba>,
     pub last_dir: Option<PathBuf>,
     pub show_welcome_animation: bool,
+    pub show_rulers: bool,
+    pub show_guides: bool,
+    pub show_grid: bool,
+    pub snap: bool,
+    pub grid_size: f32,
 }
 
 impl Default for Prefs {
@@ -47,6 +52,11 @@ impl Default for Prefs {
             swatches: Vec::new(),
             last_dir: None,
             show_welcome_animation: true,
+            show_rulers: true,
+            show_guides: true,
+            show_grid: false,
+            snap: true,
+            grid_size: 64.0,
         }
     }
 }
@@ -954,6 +964,17 @@ impl App {
                 }
             }
             Action::TogglePixelGrid => self.prefs.pixel_grid = !self.prefs.pixel_grid,
+            Action::ToggleRulers => self.prefs.show_rulers = !self.prefs.show_rulers,
+            Action::ToggleGuides => self.prefs.show_guides = !self.prefs.show_guides,
+            Action::ToggleGrid => self.prefs.show_grid = !self.prefs.show_grid,
+            Action::ToggleSnap => self.prefs.snap = !self.prefs.snap,
+            Action::NewGuide => {
+                if has_doc {
+                    self.dialog = Some(Dialog::NewGuide { horizontal: true, pos: 100.0 });
+                }
+            }
+            Action::ClearGuides => self.edit("Clear Guides", |d| d.guides.clear()),
+            Action::CommandPalette => self.dialog = Some(Dialog::CommandPalette { query: String::new(), selected: 0 }),
             Action::ToggleSelectionEdges => self.show_edges = !self.show_edges,
             Action::ToggleTheme => {
                 let dark = ctx.global_style().visuals.dark_mode;

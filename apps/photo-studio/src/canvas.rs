@@ -145,6 +145,8 @@ pub struct CanvasState {
     pub hover: Option<(f32, f32)>,
     /// Ruler tool measurement, canvas coordinates.
     pub ruler: Option<((f32, f32), (f32, f32))>,
+    /// A guide being dragged: (horizontal, index of an existing guide, current position).
+    guide_drag: Option<(bool, Option<usize>, f32)>,
     last_paint: Option<(f32, f32)>,
 }
 
@@ -161,6 +163,7 @@ impl Default for CanvasState {
             clone_offset: None,
             hover: None,
             ruler: None,
+            guide_drag: None,
             last_paint: None,
         }
     }
@@ -191,7 +194,11 @@ fn select_op(m: egui::Modifiers, default: SelectOp) -> SelectOp {
 
 pub fn show(app: &mut App, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    let (view_rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
+    let full = ui.available_rect_before_wrap();
+    let ruler_w = if app.prefs.show_rulers && !app.docs.is_empty() { 20.0 } else { 0.0 };
+    let view_rect = ERect::from_min_max(full.min + Vec2::splat(ruler_w), full.max);
+    let resp = ui.interact(view_rect, ui.id().with("canvas"), Sense::click_and_drag());
+    ui.allocate_rect(full, Sense::hover());
     app.cv.view_rect = view_rect;
     let painter = ui.painter_at(view_rect);
     painter.rect_filled(view_rect, 0.0, t.canvas);
@@ -261,6 +268,12 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         draw_ants(app, &painter, &view, time);
     }
 
+    // ---- grid and guides ----
+    if app.prefs.show_grid {
+        draw_grid(app, &painter, &view, img_rect);
+    }
+    let guide_busy = guides(app, ui, &resp, &view, full, ruler_w);
+
     // ---- pointer handling ----
     let space = ctx.input(|i| i.key_down(egui::Key::Space)) && app.cv.text_edit.is_none();
     let middle = ctx.input(|i| i.pointer.middle_down());
@@ -284,6 +297,8 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         if resp.double_clicked() && app.tool == Tool::Hand {
             app.docs[active].fit(view_rect.size());
         }
+    } else if guide_busy {
+        // A guide is being created or moved.
     } else if app.cv.transform.is_some() {
         handle_transform(app, &resp, &view, mods);
     } else {
@@ -472,6 +487,28 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
         resp.drag_started_by(egui::PointerButton::Primary) || resp.clicked_by(egui::PointerButton::Primary);
     // Drags start where the button went down, not where the drag threshold was crossed.
     let origin = ctx.input(|i| i.pointer.press_origin()).map(|o| view.to_canvas(o)).unwrap_or(p);
+    let snaps = matches!(
+        tool,
+        Tool::RectMarquee
+            | Tool::EllipseMarquee
+            | Tool::PolyLasso
+            | Tool::Crop
+            | Tool::Gradient
+            | Tool::Ruler
+            | Tool::Text
+            | Tool::Rectangle
+            | Tool::RoundedRect
+            | Tool::Ellipse
+            | Tool::Triangle
+            | Tool::Polygon
+            | Tool::Star
+            | Tool::Line
+            | Tool::Heart
+            | Tool::Arrow
+            | Tool::SpeechBubble
+            | Tool::Checkmark
+    );
+    let (p, origin) = if snaps && !mods.command { (snap(app, view, p), snap(app, view, origin)) } else { (p, origin) };
     let active = app.active;
 
     // Cursor.
@@ -1012,6 +1049,231 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
         _ => {}
     }
     let _ = FilterCtx::default();
+}
+
+/// Snap a canvas point to guides, the canvas edges and the grid (within 8 screen pixels).
+fn snap(app: &App, view: &View, p: (f32, f32)) -> (f32, f32) {
+    let Some(tab) = app.tab() else { return p };
+    if !app.prefs.snap {
+        return p;
+    }
+    let reach = 8.0 / view.zoom;
+    let (w, h) = (tab.doc.width as f32, tab.doc.height as f32);
+    let mut xs = vec![0.0, w, w / 2.0];
+    let mut ys = vec![0.0, h, h / 2.0];
+    if app.prefs.show_guides {
+        for g in &tab.doc.guides {
+            if g.horizontal { ys.push(g.pos) } else { xs.push(g.pos) }
+        }
+    }
+    if app.prefs.show_grid {
+        let gs = app.prefs.grid_size.max(1.0);
+        xs.push((p.0 / gs).round() * gs);
+        ys.push((p.1 / gs).round() * gs);
+    }
+    let pick = |v: f32, cands: &[f32]| {
+        cands
+            .iter()
+            .copied()
+            .filter(|c| (c - v).abs() <= reach)
+            .min_by(|a, b| (a - v).abs().total_cmp(&(b - v).abs()))
+            .unwrap_or(v)
+    };
+    (pick(p.0, &xs), pick(p.1, &ys))
+}
+
+fn draw_grid(app: &App, painter: &egui::Painter, view: &View, img_rect: ERect) {
+    let gs = app.prefs.grid_size.max(1.0);
+    let sub = gs / 4.0;
+    let vis = img_rect.intersect(painter.clip_rect());
+    let (x0, y0) = view.to_canvas(vis.min);
+    let (x1, y1) = view.to_canvas(vis.max);
+    for (step, alpha) in [(sub, 22u8), (gs, 60u8)] {
+        if step * view.zoom < 6.0 {
+            continue;
+        }
+        let stroke = Stroke::new(1.0, Color32::from_rgba_unmultiplied(120, 160, 255, alpha));
+        let mut x = (x0 / step).floor() * step;
+        while x <= x1 {
+            painter.vline(view.to_screen((x, 0.0)).x, vis.y_range(), stroke);
+            x += step;
+        }
+        let mut y = (y0 / step).floor() * step;
+        while y <= y1 {
+            painter.hline(vis.x_range(), view.to_screen((0.0, y)).y, stroke);
+            y += step;
+        }
+    }
+}
+
+/// Rulers, and creating, moving and deleting guides. Returns true while a guide is dragged.
+fn guides(app: &mut App, ui: &mut Ui, resp: &egui::Response, view: &View, full: ERect, ruler_w: f32) -> bool {
+    let t = Tokens::get(ui.ctx());
+    let guide_col = Color32::from_rgb(0, 200, 255);
+    let ctx = ui.ctx().clone();
+    let pointer = ctx.input(|i| i.pointer.hover_pos());
+    let view_rect = app.cv.view_rect;
+
+    // Rulers.
+    if ruler_w > 0.0 {
+        let top =
+            ERect::from_min_max(egui::pos2(view_rect.left(), full.top()), egui::pos2(full.right(), view_rect.top()));
+        let left =
+            ERect::from_min_max(egui::pos2(full.left(), view_rect.top()), egui::pos2(view_rect.left(), full.bottom()));
+        let corner = ERect::from_min_max(full.min, view_rect.min);
+        let p = ui.painter();
+        for r in [top, left, corner] {
+            p.rect_filled(r, 0.0, t.panel);
+        }
+        p.hline(full.x_range(), view_rect.top() - 0.5, Stroke::new(1.0, t.separator));
+        p.vline(view_rect.left() - 0.5, full.y_range(), Stroke::new(1.0, t.separator));
+        let steps = [1.0f32, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0];
+        let major = steps.iter().copied().find(|s| s * view.zoom >= 60.0).unwrap_or(10000.0);
+        let minor = major / if (major / 5.0).fract() == 0.0 && major >= 5.0 { 5.0 } else { 2.0 };
+        let font = egui::FontId::proportional(9.5);
+        let tick = Stroke::new(1.0, t.text_faint);
+        let (cx0, _) = view.to_canvas(top.left_top());
+        let (cx1, _) = view.to_canvas(top.right_top());
+        let mut x = (cx0 / minor).floor() * minor;
+        while x <= cx1 {
+            let sx = view.to_screen((x, 0.0)).x;
+            let is_major = (x / major).round() * major == x;
+            let len = if is_major { 10.0 } else { 4.0 };
+            p.vline(sx, top.bottom() - len..=top.bottom(), tick);
+            if is_major {
+                p.text(
+                    egui::pos2(sx + 3.0, top.top() + 2.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("{x:.0}"),
+                    font.clone(),
+                    t.text_dim,
+                );
+            }
+            x += minor;
+        }
+        let (_, cy0) = view.to_canvas(left.left_top());
+        let (_, cy1) = view.to_canvas(left.left_bottom());
+        let mut y = (cy0 / minor).floor() * minor;
+        while y <= cy1 {
+            let sy = view.to_screen((0.0, y)).y;
+            let is_major = (y / major).round() * major == y;
+            let len = if is_major { 10.0 } else { 4.0 };
+            p.hline(left.right() - len..=left.right(), sy, tick);
+            if is_major {
+                let label = format!("{y:.0}");
+                for (k, ch) in label.chars().enumerate() {
+                    p.text(
+                        egui::pos2(left.left() + 4.0, sy + 2.0 + k as f32 * 9.0),
+                        egui::Align2::LEFT_TOP,
+                        ch,
+                        font.clone(),
+                        t.text_dim,
+                    );
+                }
+            }
+            y += minor;
+        }
+        // Pointer position marks.
+        if let Some(pp) = pointer.filter(|pp| view_rect.contains(*pp)) {
+            p.vline(pp.x, top.y_range(), Stroke::new(1.0, t.accent));
+            p.hline(left.x_range(), pp.y, Stroke::new(1.0, t.accent));
+        }
+        // Drag a new guide out of a ruler.
+        for (rect, horizontal) in [(top, true), (left, false)] {
+            let r = ui.interact(rect, ui.id().with(("ruler", horizontal)), Sense::drag());
+            if r.drag_started() {
+                app.cv.guide_drag = Some((horizontal, None, 0.0));
+            }
+            if r.hovered() {
+                ctx.set_cursor_icon(if horizontal { CursorIcon::ResizeVertical } else { CursorIcon::ResizeHorizontal });
+            }
+        }
+    }
+
+    // Existing guides: draw, and pick one up with the Move tool.
+    let show = app.prefs.show_guides;
+    let Some(tab) = app.docs.get(app.active) else { return false };
+    let painter = ui.painter_at(view_rect);
+    if show {
+        for (i, g) in tab.doc.guides.iter().enumerate() {
+            if app.cv.guide_drag.is_some_and(|(_, idx, _)| idx == Some(i)) {
+                continue;
+            }
+            if g.horizontal {
+                painter.hline(view_rect.x_range(), view.to_screen((0.0, g.pos)).y, Stroke::new(1.0, guide_col));
+            } else {
+                painter.vline(view.to_screen((g.pos, 0.0)).x, view_rect.y_range(), Stroke::new(1.0, guide_col));
+            }
+        }
+    }
+    if show && app.cv.guide_drag.is_none() && app.tool == Tool::Move && app.cv.transform.is_none() {
+        // Pick-up is decided where the button went down, not where the drag threshold was crossed.
+        let probe = if resp.drag_started() { ctx.input(|i| i.pointer.press_origin()) } else { pointer };
+        if let Some(pp) = probe.filter(|pp| view_rect.contains(*pp)) {
+            let near = tab.doc.guides.iter().position(|g| {
+                let s = if g.horizontal {
+                    view.to_screen((0.0, g.pos)).y - pp.y
+                } else {
+                    view.to_screen((g.pos, 0.0)).x - pp.x
+                };
+                s.abs() < 4.0
+            });
+            if let Some(i) = near {
+                let g = tab.doc.guides[i];
+                ctx.set_cursor_icon(if g.horizontal {
+                    CursorIcon::ResizeVertical
+                } else {
+                    CursorIcon::ResizeHorizontal
+                });
+                if resp.drag_started() {
+                    app.cv.guide_drag = Some((g.horizontal, Some(i), g.pos));
+                }
+            }
+        }
+    }
+
+    // Active drag.
+    let Some((horizontal, index, _)) = app.cv.guide_drag else { return false };
+    let Some(pp) = pointer.or_else(|| ctx.input(|i| i.pointer.interact_pos())) else { return true };
+    let (cx, cy) = view.to_canvas(pp);
+    let mut pos = if horizontal { cy } else { cx };
+    if !ctx.input(|i| i.modifiers.command) {
+        pos = pos.round();
+    }
+    app.cv.guide_drag = Some((horizontal, index, pos));
+    if horizontal {
+        painter.hline(view_rect.x_range(), view.to_screen((0.0, pos)).y, Stroke::new(1.0, guide_col));
+    } else {
+        painter.vline(view.to_screen((pos, 0.0)).x, view_rect.y_range(), Stroke::new(1.0, guide_col));
+    }
+    painter.text(
+        pp + Vec2::new(12.0, 12.0),
+        egui::Align2::LEFT_TOP,
+        format!("{pos:.0} px"),
+        egui::FontId::proportional(11.0),
+        Color32::WHITE,
+    );
+    if ctx.input(|i| i.pointer.any_released()) {
+        app.cv.guide_drag = None;
+        let inside = view_rect.contains(pp);
+        let tab = &mut app.docs[app.active];
+        match (index, inside) {
+            (None, true) => {
+                tab.doc.guides.push(studio_core::document::Guide { horizontal, pos });
+                tab.commit("New Guide");
+            }
+            (Some(i), true) => {
+                tab.doc.guides[i].pos = pos;
+                tab.commit("Move Guide");
+            }
+            (Some(i), false) => {
+                tab.doc.guides.remove(i);
+                tab.commit("Delete Guide");
+            }
+            (None, false) => {}
+        }
+    }
+    true
 }
 
 fn finish_polygon(app: &mut App, points: &[(f32, f32)], op: SelectOp, label: &str) {

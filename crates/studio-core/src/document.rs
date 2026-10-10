@@ -7,6 +7,13 @@ use crate::image::{Image, Mask};
 use crate::layer::{FillLayer, Layer, LayerId, LayerKind};
 use crate::transform::{self, Resample, Rotation};
 
+/// A ruler guide: a horizontal or vertical line at `pos` canvas pixels.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Guide {
+    pub horizontal: bool,
+    pub pos: f32,
+}
+
 #[derive(Clone, Debug)]
 pub struct Document {
     pub width: u32,
@@ -18,6 +25,7 @@ pub struct Document {
     pub next_id: LayerId,
     /// Pixels per inch, for print sizes.
     pub ppi: f32,
+    pub guides: Vec<Guide>,
 }
 
 /// Everything history needs to restore.
@@ -28,6 +36,7 @@ pub struct DocState {
     layers: Vec<Layer>,
     active: usize,
     selection: Option<Mask>,
+    guides: Vec<Guide>,
 }
 
 /// Where existing pixels sit when the canvas grows or shrinks.
@@ -84,7 +93,16 @@ impl DocState {
 impl Document {
     /// A new document with a "Background" layer filled with `bg`, or a transparent "Layer 1".
     pub fn new(width: u32, height: u32, bg: Option<Rgba>) -> Self {
-        let mut doc = Document { width, height, layers: Vec::new(), active: 0, selection: None, next_id: 1, ppi: 72.0 };
+        let mut doc = Document {
+            width,
+            height,
+            layers: Vec::new(),
+            active: 0,
+            selection: None,
+            next_id: 1,
+            ppi: 72.0,
+            guides: Vec::new(),
+        };
         let (name, img) = match bg {
             Some(c) => ("Background", Image::filled(width, height, c)),
             None => ("Layer 1", Image::new(width, height)),
@@ -103,6 +121,7 @@ impl Document {
             selection: None,
             next_id: 1,
             ppi: 72.0,
+            guides: Vec::new(),
         };
         let id = doc.new_id();
         doc.layers.push(Layer::raster(id, "Background", img));
@@ -126,6 +145,7 @@ impl Document {
             layers: self.layers.clone(),
             active: self.active,
             selection: self.selection.clone(),
+            guides: self.guides.clone(),
         }
     }
 
@@ -135,6 +155,7 @@ impl Document {
         self.layers = s.layers.clone();
         self.active = s.active.min(self.layers.len().saturating_sub(1));
         self.selection = s.selection.clone();
+        self.guides = s.guides.clone();
         if let Some(max) = self.layers.iter().map(|l| l.id).max() {
             self.next_id = self.next_id.max(max + 1);
         }
@@ -578,6 +599,20 @@ impl Document {
             }
         }
         self.selection = self.selection.as_ref().map(&mask).filter(|m| !m.is_empty());
+        match params {
+            Params::Offset(dx, dy) => {
+                for g in &mut self.guides {
+                    g.pos += if g.horizontal { dy } else { dx };
+                }
+            }
+            Params::Scale(sx, sy) => {
+                for g in &mut self.guides {
+                    g.pos *= if g.horizontal { sy } else { sx };
+                }
+            }
+            // Guides don't survive rotation meaningfully.
+            Params::Rasterize => self.guides.clear(),
+        }
         self.width = nw;
         self.height = nh;
     }
@@ -923,6 +958,16 @@ mod tests {
             _ => panic!("still text"),
         }
         assert_eq!(d.layers[1].pixels.size(), (200, 200));
+    }
+
+    #[test]
+    fn guides_follow_crop_and_resize() {
+        let mut d = Document::new(100, 100, Some(Rgba::WHITE));
+        d.guides.push(Guide { horizontal: false, pos: 50.0 });
+        d.crop(Rect::new(10, 0, 80, 100));
+        assert_eq!(d.guides[0].pos, 40.0);
+        d.resize_image(160, 200, Resample::Bilinear);
+        assert_eq!(d.guides[0].pos, 80.0);
     }
 
     #[test]

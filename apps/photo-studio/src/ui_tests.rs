@@ -477,9 +477,14 @@ fn screenshots() {
     let sample = std::env::var("PHOTO_STUDIO_SAMPLE").expect("PHOTO_STUDIO_SAMPLE");
     let out = std::path::PathBuf::from(std::env::var("PHOTO_STUDIO_SHOTS").unwrap_or_else(|_| ".".into()));
     std::fs::create_dir_all(&out).unwrap();
-    for (name, variant, theme) in
-        [("demo", "1", "dark"), ("styles", "styles", "dark"), ("filter", "filter", "dark"), ("light", "1", "light")]
-    {
+    for (name, variant, theme) in [
+        ("demo", "1", "dark"),
+        ("styles", "styles", "dark"),
+        ("filter", "filter", "dark"),
+        ("light", "1", "light"),
+        ("guides", "guides", "dark"),
+        ("palette", "palette", "dark"),
+    ] {
         let mut h = Harness::builder()
             .with_size(egui::vec2(1440.0, 900.0))
             .with_pixels_per_point(2.0)
@@ -491,8 +496,77 @@ fn screenshots() {
         crate::theme::apply(&ctx, app.prefs.theme);
         h.run_steps(4);
         crate::shell::build_demo(h.state_mut(), &ctx, variant);
+        if variant == "guides" {
+            let app = h.state_mut();
+            app.prefs.show_grid = true;
+            let tab = app.tab_mut().unwrap();
+            tab.doc.guides.push(studio_core::document::Guide { horizontal: true, pos: 300.0 });
+            tab.doc.guides.push(studio_core::document::Guide { horizontal: false, pos: 640.0 });
+        }
+        if variant == "palette" {
+            h.state_mut().dialog = Some(crate::dialogs::Dialog::CommandPalette { query: "blur".into(), selected: 0 });
+        }
         h.run_steps(8);
         let img = h.render().expect("render");
         img.save(out.join(format!("{name}.png"))).unwrap();
     }
+}
+
+fn raw_drag(h: &mut Harness<'static, App>, a: Pos2, b: Pos2) {
+    h.event(Event::PointerMoved(a));
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    for i in 1..=8 {
+        h.event(Event::PointerMoved(a + (b - a) * (i as f32 / 8.0)));
+        h.run_steps(1);
+    }
+    h.event(Event::PointerButton {
+        pos: b,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    h.run_steps(2);
+}
+
+#[test]
+fn guides_from_ruler_snap_and_delete() {
+    let mut h = harness();
+    // Drag from the top ruler down to y = 100 on the canvas.
+    let target = screen(&h, 200.0, 100.0);
+    let ruler = Pos2::new(target.x, h.state().cv.view_rect.top() - 10.0);
+    raw_drag(&mut h, ruler, target);
+    let guides = h.state().tab().unwrap().doc.guides.clone();
+    assert_eq!(guides.len(), 1, "guide created");
+    assert!(guides[0].horizontal && (guides[0].pos - 100.0).abs() <= 1.0, "{guides:?}");
+
+    // A marquee dragged near the guide snaps to it.
+    h.state_mut().set_tool(Tool::RectMarquee);
+    drag(&mut h, (50.0, 30.0), (150.0, 97.0), Modifiers::NONE);
+    let b = h.state().tab().unwrap().doc.selection.as_ref().and_then(|m| m.bounds()).unwrap();
+    assert_eq!(b.bottom(), 100, "snapped to the guide: {b:?}");
+
+    // The Move tool drags the guide off the canvas to delete it.
+    h.state_mut().set_tool(Tool::Move);
+    let on_guide = screen(&h, 300.0, 100.0);
+    let outside = Pos2::new(on_guide.x, h.state().cv.view_rect.top() - 5.0);
+    raw_drag(&mut h, on_guide, outside);
+    assert!(h.state().tab().unwrap().doc.guides.is_empty(), "guide deleted");
+}
+
+#[test]
+fn command_palette_finds_and_runs() {
+    assert!(crate::menus::fuzzy("gaus", "Filter › Blur › Gaussian Blur").is_some());
+    assert!(crate::menus::fuzzy("xyz", "Filter › Blur › Gaussian Blur").is_none());
+    let mut h = harness();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::F);
+    h.run_steps(2);
+    assert!(matches!(h.state().dialog, Some(crate::dialogs::Dialog::CommandPalette { .. })));
+    h.event(Event::Text("new layer".into()));
+    h.run_steps(2);
+    h.key_press(Key::Enter);
+    h.run_steps(3);
+    assert!(h.state().dialog.is_none());
+    assert_eq!(h.state().tab().unwrap().doc.layers.len(), 2, "New Layer ran");
 }

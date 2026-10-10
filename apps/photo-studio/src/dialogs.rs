@@ -62,6 +62,8 @@ pub enum Dialog {
     Fill { with: FillWith, opacity: f32, blend: BlendMode },
     Stroke { width: f32, position: StrokePosition },
     LayerStyle { styles: LayerStyles, section: usize, pv: Preview },
+    NewGuide { horizontal: bool, pos: f32 },
+    CommandPalette { query: String, selected: usize },
     Preferences,
     About,
     Shortcuts,
@@ -747,6 +749,94 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
                 _ => true,
             }
         }
+        Dialog::NewGuide { horizontal, pos } => modal(ctx, "new-guide", "New Guide", 320.0, |ui| {
+            segmented(ui, horizontal, &[(true, "Horizontal"), (false, "Vertical")]);
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                label_dim(ui, "Position");
+                ui.add(egui::DragValue::new(pos).suffix(" px").speed(1.0));
+            });
+            let (ok, cancel) = buttons(ui, "Add");
+            if ok {
+                let g = studio_core::document::Guide { horizontal: *horizontal, pos: *pos };
+                app.edit("New Guide", |d| d.guides.push(g));
+                app.prefs.show_guides = true;
+            }
+            !(ok || cancel)
+        }),
+        Dialog::CommandPalette { query, selected } => {
+            let mut run = None;
+            let mut close = false;
+            let screen = ctx.content_rect();
+            egui::Modal::new(egui::Id::new("palette"))
+                .area(
+                    egui::Modal::default_area(egui::Id::new("palette-area"))
+                        .anchor(egui::Align2::CENTER_TOP, [0.0, screen.height() * 0.12]),
+                )
+                .show(ctx, |ui| {
+                    ui.set_width(560.0);
+                    let r = ui.add(
+                        egui::TextEdit::singleline(query)
+                            .hint_text(format!("{}  Search commands, adjustments and filters", ph::MAGNIFYING_GLASS))
+                            .font(egui::FontId::proportional(17.0))
+                            .desired_width(f32::INFINITY)
+                            .margin(egui::vec2(10.0, 8.0)),
+                    );
+                    r.request_focus();
+                    if r.changed() {
+                        *selected = 0;
+                    }
+                    let mut hits: Vec<(i32, String, Action)> = crate::menus::all_commands()
+                        .into_iter()
+                        .filter_map(|a| {
+                            let label = crate::menus::palette_label(&a);
+                            crate::menus::fuzzy(query, &label).map(|s| (s, label, a))
+                        })
+                        .collect();
+                    hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+                    hits.truncate(12);
+                    let (down, up, enter, esc) = ui.input(|i| {
+                        (
+                            i.key_pressed(egui::Key::ArrowDown),
+                            i.key_pressed(egui::Key::ArrowUp),
+                            i.key_pressed(egui::Key::Enter),
+                            i.key_pressed(egui::Key::Escape),
+                        )
+                    });
+                    if down {
+                        *selected = (*selected + 1).min(hits.len().saturating_sub(1));
+                    }
+                    if up {
+                        *selected = selected.saturating_sub(1);
+                    }
+                    ui.add_space(6.0);
+                    for (i, (_, label, a)) in hits.iter().enumerate() {
+                        let sc = crate::actions::shortcut_text(ctx, a);
+                        let resp = ui.add_sized(
+                            [ui.available_width(), 28.0],
+                            egui::Button::selectable(i == *selected, label.as_str()).shortcut_text(sc),
+                        );
+                        if resp.clicked() {
+                            run = Some(a.clone());
+                        }
+                    }
+                    if hits.is_empty() {
+                        label_dim(ui, "No matching commands");
+                    }
+                    if enter {
+                        run = hits.get(*selected).map(|h| h.2.clone());
+                    }
+                    if esc {
+                        close = true;
+                    }
+                });
+            if let Some(a) = run {
+                actions.push(a);
+                false
+            } else {
+                !close
+            }
+        }
         Dialog::Preferences => modal(ctx, "prefs", "Preferences", 380.0, |ui| {
             let mut theme = app.prefs.theme;
             ui.horizontal(|ui| {
@@ -838,7 +928,6 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
     if keep && app.dialog.is_none() {
         app.dialog = Some(d);
     }
-    let _ = actions;
 }
 
 /// The Layer Style dialog's effect list, in the familiar order.

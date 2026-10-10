@@ -166,6 +166,8 @@ struct Manifest {
     ppi: f32,
     active: usize,
     layers: Vec<LayerMeta>,
+    #[serde(default)]
+    guides: Vec<crate::document::Guide>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -203,6 +205,7 @@ pub fn project_bytes(doc: &Document) -> Result<Vec<u8>> {
         height: doc.height,
         ppi: doc.ppi,
         active: doc.active,
+        guides: doc.guides.clone(),
         layers: doc
             .layers
             .iter()
@@ -270,6 +273,7 @@ pub fn project_from_bytes(bytes: &[u8]) -> Result<Document> {
     let mut doc = Document::new(m.width, m.height, None);
     doc.layers.clear();
     doc.ppi = m.ppi;
+    doc.guides = m.guides;
     let mut read_png = |name: String| -> Result<Option<DynamicImage>> {
         match za.by_name(&name) {
             Ok(mut f) => {
@@ -601,6 +605,7 @@ mod tests {
         d.add_layer_of_kind("Title", LayerKind::Text(TextLayer::new("Hi", 1.0, 1.0, 8.0, Rgba::WHITE)));
         d.add_layer_of_kind("Invert", LayerKind::Adjustment(Adjustment::Invert));
         d.layers[2].styles.drop_shadow.enabled = true;
+        d.guides.push(crate::document::Guide { horizontal: true, pos: 5.0 });
         d
     }
 
@@ -619,6 +624,7 @@ mod tests {
             assert_eq!(a.styles, b.styles);
         }
         assert_eq!(back.composite(), d.composite());
+        assert_eq!(back.guides, d.guides);
     }
 
     #[test]

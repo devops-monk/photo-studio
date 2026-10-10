@@ -110,6 +110,13 @@ pub fn action_label(a: &Action) -> String {
         Action::FitOnScreen => "Fit on Screen".into(),
         Action::ActualPixels => "100%".into(),
         Action::TogglePixelGrid => "Pixel Grid".into(),
+        Action::ToggleRulers => "Rulers".into(),
+        Action::ToggleGuides => "Guides".into(),
+        Action::ToggleGrid => "Grid".into(),
+        Action::ToggleSnap => "Snap".into(),
+        Action::NewGuide => "New Guide…".into(),
+        Action::ClearGuides => "Clear Guides".into(),
+        Action::CommandPalette => "Search Commands…".into(),
         Action::ToggleSelectionEdges => "Selection Edges".into(),
         Action::ToggleTheme => "Toggle Light / Dark".into(),
         Action::About => "About Photo Studio".into(),
@@ -350,16 +357,176 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::FitOnScreen, doc);
             item(ui, out, Action::ActualPixels, doc);
             ui.separator();
+            check(ui, out, Action::ToggleRulers, app.prefs.show_rulers);
+            check(ui, out, Action::ToggleGuides, app.prefs.show_guides);
+            check(ui, out, Action::ToggleGrid, app.prefs.show_grid);
+            check(ui, out, Action::ToggleSnap, app.prefs.snap);
+            item(ui, out, Action::NewGuide, doc);
+            item(ui, out, Action::ClearGuides, doc && tab.is_some_and(|t| !t.doc.guides.is_empty()));
+            ui.separator();
             check(ui, out, Action::TogglePixelGrid, app.prefs.pixel_grid);
             check(ui, out, Action::ToggleSelectionEdges, app.show_edges);
             ui.separator();
             item(ui, out, Action::ToggleTheme, true);
         });
         ui.menu_button("Help", |ui| {
+            item(ui, out, Action::CommandPalette, true);
             item(ui, out, Action::Shortcuts, true);
             item(ui, out, Action::Website, true);
             ui.separator();
             item(ui, out, Action::About, true);
         });
     });
+}
+
+/// Everything the command palette can run.
+pub fn all_commands() -> Vec<Action> {
+    use studio_core::transform::Rotation;
+    let mut v = vec![
+        Action::New,
+        Action::NewFromClipboard,
+        Action::Open,
+        Action::Close,
+        Action::Save,
+        Action::SaveAs,
+        Action::ExportAs,
+        Action::QuickExportPng,
+        Action::Revert,
+        Action::Undo,
+        Action::Redo,
+        Action::Cut,
+        Action::Copy,
+        Action::CopyMerged,
+        Action::Paste,
+        Action::Clear,
+        Action::Fill,
+        Action::Stroke,
+        Action::FreeTransform,
+        Action::DefinePattern,
+        Action::FlipLayer(true),
+        Action::FlipLayer(false),
+        Action::RotateLayer(Rotation::Cw90),
+        Action::RotateLayer(Rotation::Ccw90),
+        Action::RotateLayer(Rotation::Half),
+        Action::Preferences,
+        Action::AutoTone,
+        Action::AutoContrast,
+        Action::AutoColor,
+        Action::Equalize,
+        Action::ShadowsHighlights,
+        Action::ImageSize,
+        Action::CanvasSize,
+        Action::RotateCanvas(Rotation::Cw90),
+        Action::RotateCanvas(Rotation::Ccw90),
+        Action::RotateCanvas(Rotation::Half),
+        Action::RotateArbitrary,
+        Action::FlipCanvas(true),
+        Action::FlipCanvas(false),
+        Action::CropToSelection,
+        Action::Trim,
+        Action::DuplicateImage,
+        Action::NewLayer,
+        Action::NewGroup,
+        Action::GroupLayers,
+        Action::Ungroup,
+        Action::NewFillSolid,
+        Action::NewFillGradient,
+        Action::DuplicateLayer,
+        Action::DeleteLayer,
+        Action::LayerViaCopy,
+        Action::LayerViaCut,
+        Action::LayerStyle,
+        Action::ClearLayerStyle,
+        Action::MaskRevealAll,
+        Action::MaskHideAll,
+        Action::MaskFromSelection,
+        Action::MaskApply,
+        Action::MaskDelete,
+        Action::MaskToggle,
+        Action::MaskInvert,
+        Action::ToggleClipping,
+        Action::Rasterize,
+        Action::BringToFront,
+        Action::BringForward,
+        Action::SendBackward,
+        Action::SendToBack,
+        Action::MergeDown,
+        Action::MergeVisible,
+        Action::Flatten,
+        Action::SelectAll,
+        Action::Deselect,
+        Action::Reselect,
+        Action::InverseSelection,
+        Action::SelectSubject,
+        Action::ColorRange,
+        Action::LoadLayerSelection,
+        Action::Modify(ModifyKind::Feather),
+        Action::Modify(ModifyKind::Expand),
+        Action::Modify(ModifyKind::Contract),
+        Action::Modify(ModifyKind::Border),
+        Action::Modify(ModifyKind::Smooth),
+        Action::RepeatFilter,
+        Action::ZoomIn,
+        Action::ZoomOut,
+        Action::FitOnScreen,
+        Action::ActualPixels,
+        Action::ToggleRulers,
+        Action::ToggleGuides,
+        Action::ToggleGrid,
+        Action::ToggleSnap,
+        Action::NewGuide,
+        Action::ClearGuides,
+        Action::TogglePixelGrid,
+        Action::ToggleSelectionEdges,
+        Action::ToggleTheme,
+        Action::Straighten,
+        Action::About,
+        Action::Shortcuts,
+        Action::Website,
+    ];
+    for a in Adjustment::catalog() {
+        v.push(Action::Adjust(a.clone()));
+        v.push(Action::NewAdjustmentLayer(a));
+    }
+    for f in Filter::catalog() {
+        v.push(Action::Filter(f));
+    }
+    v
+}
+
+/// Label shown in the palette, with context for commands whose short name is ambiguous.
+pub fn palette_label(a: &Action) -> String {
+    match a {
+        Action::Adjust(x) => format!("Image › Adjustments › {}", x.label()),
+        Action::NewAdjustmentLayer(x) => format!("New Adjustment Layer › {}", x.label()),
+        Action::Filter(f) => format!("Filter › {} › {}", f.group().label(), f.label()),
+        Action::Modify(_) => format!("Select › Modify › {}", action_label(a)),
+        Action::RotateCanvas(_) => format!("Image Rotation › {}", action_label(a)),
+        Action::FlipLayer(_) | Action::RotateLayer(_) => format!("Transform › {}", action_label(a)),
+        Action::NewFillSolid | Action::NewFillGradient => format!("New Fill Layer › {}", action_label(a)),
+        _ => action_label(a).trim_end_matches('…').to_string(),
+    }
+}
+
+/// Subsequence match score (higher is better), or None.
+pub fn fuzzy(query: &str, text: &str) -> Option<i32> {
+    let q: Vec<char> = query.to_lowercase().chars().filter(|c| !c.is_whitespace()).collect();
+    if q.is_empty() {
+        return Some(0);
+    }
+    let t: Vec<char> = text.to_lowercase().chars().collect();
+    let mut score = 0;
+    let mut qi = 0;
+    let mut last = None;
+    for (i, &c) in t.iter().enumerate() {
+        if qi < q.len() && c == q[qi] {
+            score += if last == Some(i.wrapping_sub(1)) { 6 } else { 1 };
+            if i == 0 || !t[i - 1].is_alphanumeric() {
+                score += 4;
+            }
+            last = Some(i);
+            qi += 1;
+        }
+    }
+    (qi == q.len()).then(|| score - t.len() as i32 / 8)
 }
