@@ -311,7 +311,6 @@ pub fn adjustment_icon(a: &Adjustment) -> &'static str {
 }
 
 fn adjustments(ui: &mut Ui, actions: &mut Vec<Action>) {
-
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = Vec2::splat(2.0);
         for adj in Adjustment::catalog() {
