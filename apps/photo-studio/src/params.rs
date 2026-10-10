@@ -468,6 +468,28 @@ pub fn filter_ui(ui: &mut Ui, f: &mut Filter) -> bool {
             c |= slider_row(ui, "Blur", blur, 1.0..=80.0, " px", 0);
             (*focus_y, *focus_height, *transition) = (fy / 100.0, fh / 100.0, tr / 100.0);
         }
+        Filter::FieldBlur { pins } => {
+            let mut remove = None;
+            for (i, (x, y, r)) in pins.iter_mut().enumerate() {
+                ui.label(egui::RichText::new(format!("Pin {}", i + 1)).strong());
+                let (mut px, mut py) = (*x * 100.0, *y * 100.0);
+                c |= slider_row(ui, "X", &mut px, 0.0..=100.0, "%", 0);
+                c |= slider_row(ui, "Y", &mut py, 0.0..=100.0, "%", 0);
+                c |= slider_row(ui, "Blur", r, 0.0..=80.0, " px", 0);
+                (*x, *y) = (px / 100.0, py / 100.0);
+                if ui.small_button("Remove pin").clicked() {
+                    remove = Some(i);
+                }
+            }
+            if let Some(i) = remove {
+                pins.remove(i);
+                c = true;
+            }
+            if pins.len() < 6 && ui.button("Add pin").clicked() {
+                pins.push((0.5, 0.5, 10.0));
+                c = true;
+            }
+        }
         Filter::IrisBlur { cx, cy, rx, ry, transition, blur } => {
             for (label, v) in
                 [("Center X", cx), ("Center Y", cy), ("Width", rx), ("Height", ry), ("Transition", transition)]

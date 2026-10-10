@@ -221,6 +221,10 @@ pub enum Filter {
         transition: f32,
         blur: f32,
     },
+    /// Blur Gallery's Field Blur: pins (x, y as 0..1, blur radius) blended smoothly.
+    FieldBlur {
+        pins: Vec<(f32, f32, f32)>,
+    },
     /// Blur Gallery's Iris Blur: sharp inside an ellipse, blurring outward.
     IrisBlur {
         cx: f32,
@@ -374,6 +378,7 @@ impl Filter {
             Self::SurfaceBlur { radius: 5.0, threshold: 15.0 },
             Self::TiltShift { focus_y: 0.5, focus_height: 0.2, transition: 0.2, blur: 12.0 },
             Self::IrisBlur { cx: 0.5, cy: 0.5, rx: 0.25, ry: 0.25, transition: 0.2, blur: 15.0 },
+            Self::FieldBlur { pins: vec![(0.25, 0.5, 0.0), (0.75, 0.5, 20.0)] },
             Self::Sharpen,
             Self::SharpenMore,
             Self::UnsharpMask { amount: 80.0, radius: 1.5, threshold: 0 },
@@ -410,6 +415,7 @@ impl Filter {
             Self::SurfaceBlur { .. } => "Surface Blur",
             Self::TiltShift { .. } => "Tilt-Shift",
             Self::IrisBlur { .. } => "Iris Blur",
+            Self::FieldBlur { .. } => "Field Blur",
             Self::Sharpen => "Sharpen",
             Self::SharpenMore => "Sharpen More",
             Self::UnsharpMask { .. } => "Unsharp Mask",
@@ -445,7 +451,8 @@ impl Filter {
             | Self::RadialBlur { .. }
             | Self::SurfaceBlur { .. }
             | Self::TiltShift { .. }
-            | Self::IrisBlur { .. } => FilterGroup::Blur,
+            | Self::IrisBlur { .. }
+            | Self::FieldBlur { .. } => FilterGroup::Blur,
             Self::Sharpen | Self::SharpenMore | Self::UnsharpMask { .. } => FilterGroup::Sharpen,
             Self::AddNoise { .. } | Self::Median { .. } | Self::ReduceNoise { .. } | Self::DustScratches { .. } => {
                 FilterGroup::Noise
@@ -475,7 +482,10 @@ impl Filter {
     /// must run on the full layer rather than a crop around the selection.
     fn is_global(&self) -> bool {
         matches!(self.group(), FilterGroup::Distort | FilterGroup::Render)
-            || matches!(self, Self::RadialBlur { .. } | Self::TiltShift { .. } | Self::IrisBlur { .. })
+            || matches!(
+                self,
+                Self::RadialBlur { .. } | Self::TiltShift { .. } | Self::IrisBlur { .. } | Self::FieldBlur { .. }
+            )
     }
 
     /// How far (in pixels) a filter reads around each output pixel.
@@ -604,6 +614,41 @@ impl Filter {
                         let s = &src[(y * iw + x) * 4..(y * iw + x) * 4 + 4];
                         for c in 0..4 {
                             p[c] = (p[c] as f32 + (s[c] as f32 - p[c] as f32) * t).round() as u8;
+                        }
+                    }
+                });
+                out
+            }
+            Self::FieldBlur { pins } => {
+                if pins.is_empty() {
+                    return img.clone();
+                }
+                // A small stack of blur levels; each pixel interpolates between the two nearest.
+                let max = pins.iter().map(|p| p.2).fold(0.0f32, f32::max).max(0.5);
+                let levels: Vec<f32> = (0..=5).map(|k| max * k as f32 / 5.0).collect();
+                let stack: Vec<Image> =
+                    levels.iter().map(|&r| if r < 0.3 { img.clone() } else { gaussian_blur(img, r) }).collect();
+                let iw = img.width() as usize;
+                let mut out = img.clone();
+                out.pixels_mut().par_chunks_mut(iw * 4).enumerate().for_each(|(y, row)| {
+                    for (x, p) in row.chunks_exact_mut(4).enumerate() {
+                        let (u, v) = ((x as f32 + 0.5) / w, (y as f32 + 0.5) / h);
+                        // Inverse-distance weighting of the pins' radii.
+                        let (mut num, mut den) = (0.0f32, 0.0f32);
+                        for &(px, py, r) in pins {
+                            let d2 = (u - px).powi(2) + (v - py).powi(2);
+                            let wgt = 1.0 / (d2 + 1e-4).powi(2);
+                            num += r * wgt;
+                            den += wgt;
+                        }
+                        let r = num / den;
+                        let f = (r / max * 5.0).clamp(0.0, 5.0);
+                        let (lo, t) = (f.floor() as usize, f.fract());
+                        let hi = (lo + 1).min(5);
+                        let i = (y * iw + x) * 4;
+                        let (a, b) = (&stack[lo].pixels()[i..i + 4], &stack[hi].pixels()[i..i + 4]);
+                        for c in 0..4 {
+                            p[c] = (a[c] as f32 + (b[c] as f32 - a[c] as f32) * t).round() as u8;
                         }
                     }
                 });
@@ -1348,6 +1393,21 @@ mod tests {
             let out = f.run(&img, &FilterCtx::default());
             assert_eq!(out.size(), img.size(), "{}", f.label());
         }
+    }
+
+    #[test]
+    fn field_blur_follows_pins() {
+        let mut img = Image::new(64, 16);
+        for y in 0..16 {
+            for x in 0..64 {
+                let v = if (x / 2) % 2 == 0 { 255 } else { 0 };
+                img.put(x, y, Rgba::rgb(v, v, v));
+            }
+        }
+        let out = Filter::FieldBlur { pins: vec![(0.0, 0.5, 0.0), (1.0, 0.5, 12.0)] }.run(&img, &FilterCtx::default());
+        assert_eq!(out.get(2, 8), img.get(2, 8), "sharp at the left pin");
+        let right = out.get(60, 8).r();
+        assert!((90..170).contains(&right), "blurred to grey at the right pin: {right}");
     }
 
     #[test]
