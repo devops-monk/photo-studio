@@ -1133,6 +1133,29 @@ impl App {
                     l.mask_enabled = !l.mask_enabled;
                 }
             }),
+            Action::VectorMaskFromPath => {
+                let Some(path) = self
+                    .active_path
+                    .and_then(|i| self.tab().and_then(|t| t.doc.paths.get(i)))
+                    .map(|np| np.path.clone())
+                else {
+                    self.notify(ctx, "Select a path in the Paths panel first");
+                    return;
+                };
+                self.edit("Add Vector Mask", |d| {
+                    if let Some(l) = d.active_layer_mut() {
+                        let mut p = path;
+                        p.closed = true;
+                        l.vector_mask = Some(p);
+                        l.mask_enabled = true;
+                    }
+                });
+            }
+            Action::DeleteVectorMask => self.edit("Delete Vector Mask", |d| {
+                if let Some(l) = d.active_layer_mut() {
+                    l.vector_mask = None;
+                }
+            }),
             Action::MaskInvert => self.edit("Invert Layer Mask", |d| {
                 if let Some(m) = d.active_layer_mut().and_then(|l| l.mask.as_mut()) {
                     m.invert();

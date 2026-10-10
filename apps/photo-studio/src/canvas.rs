@@ -938,13 +938,34 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                         }
                     }
                 }
+                // The active layer's vector mask is editable too (index usize::MAX).
+                if let Some(vm) = tab.doc.active_layer().and_then(|l| l.vector_mask.as_ref()) {
+                    for (ai, a) in vm.anchors.iter().enumerate() {
+                        for (k, q) in [(0u8, a.p), (1, a.h_in), (2, a.h_out)] {
+                            let d = view.to_screen(q).distance(probe);
+                            if d < 9.0 && best.is_none_or(|b| d < b.0) {
+                                best = Some((d, (usize::MAX, ai, k)));
+                            }
+                        }
+                    }
+                }
                 app.cv.direct = best.map(|b| b.1);
-                if let Some((pi, _, _)) = app.cv.direct {
+                if let Some((pi, _, _)) = app.cv.direct.filter(|d| d.0 != usize::MAX) {
                     app.active_path = Some(pi);
                 }
             }
             if let Some((pi, ai, k)) = app.cv.direct {
-                if let Some(a) = app.docs[active].doc.paths.get_mut(pi).and_then(|np| np.path.anchors.get_mut(ai)) {
+                let tab = &mut app.docs[active];
+                let anchor = if pi == usize::MAX {
+                    tab.invalidate_all();
+                    tab.doc
+                        .active_layer_mut()
+                        .and_then(|l| l.vector_mask.as_mut())
+                        .and_then(|vm| vm.anchors.get_mut(ai))
+                } else {
+                    tab.doc.paths.get_mut(pi).and_then(|np| np.path.anchors.get_mut(ai))
+                };
+                if let Some(a) = anchor {
                     match k {
                         0 => {
                             let (dx, dy) = (p.0 - a.p.0, p.1 - a.p.1);
@@ -2206,6 +2227,11 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
                 path_col,
                 matches!(app.tool, Tool::Pen | Tool::DirectSelect | Tool::PathSelect),
             );
+        }
+    }
+    if matches!(app.tool, Tool::Pen | Tool::DirectSelect | Tool::PathSelect) {
+        if let Some(vm) = app.tab().and_then(|t| t.doc.active_layer()).and_then(|l| l.vector_mask.as_ref()) {
+            draw_path(painter, view, vm, Color32::from_rgb(191, 90, 242), true);
         }
     }
     if let Some(bp) = &app.cv.pen {

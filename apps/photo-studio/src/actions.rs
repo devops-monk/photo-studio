@@ -91,6 +91,8 @@ pub enum Action {
     MaskDelete,
     MaskToggle,
     MaskInvert,
+    VectorMaskFromPath,
+    DeleteVectorMask,
     ToggleClipping,
     GroupLayers,
     Ungroup,

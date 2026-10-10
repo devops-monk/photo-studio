@@ -1092,3 +1092,38 @@ fn note_count_and_slice_tools() {
     assert_eq!(s.len(), 1);
     assert!((s[0].w as i32 - 100).abs() <= 2 && (s[0].h as i32 - 50).abs() <= 2, "{s:?}");
 }
+
+#[test]
+fn vector_mask_from_path_and_edit() {
+    use crate::actions::Action;
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        tab.doc.layers[0].pixels = studio_core::Image::filled(400, 300, Rgba::BLACK);
+        tab.doc.add_empty_layer("white");
+        let i = tab.doc.active;
+        tab.doc.layers[i].pixels = studio_core::Image::filled(400, 300, Rgba::WHITE);
+        tab.commit("setup");
+    }
+    h.state_mut().set_tool(Tool::Pen);
+    for q in [(100.0, 100.0), (200.0, 100.0), (200.0, 200.0), (100.0, 200.0), (100.0, 100.0)] {
+        click(&mut h, q);
+    }
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, Action::VectorMaskFromPath);
+    h.run_steps(3);
+    {
+        let tab = h.state().tab().unwrap();
+        assert!(tab.doc.layers[1].vector_mask.is_some());
+        assert_eq!(tab.composite.get(150, 150), Rgba::WHITE, "inside shows the layer");
+        assert_eq!(tab.composite.get(250, 150), Rgba::BLACK, "outside is masked");
+    }
+    // Drag the mask's bottom-right corner outwards with Direct Selection.
+    h.state_mut().active_path = None;
+    h.state_mut().tab_mut().unwrap().doc.paths.clear();
+    h.state_mut().set_tool(Tool::DirectSelect);
+    drag(&mut h, (200.0, 200.0), (300.0, 250.0), Modifiers::NONE);
+    h.run_steps(3);
+    let tab = h.state().tab().unwrap();
+    assert_eq!(tab.composite.get(280, 240), Rgba::WHITE, "mask grew with the anchor");
+}

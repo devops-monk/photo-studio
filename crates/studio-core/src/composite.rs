@@ -7,7 +7,7 @@ use rayon::prelude::*;
 
 use crate::blend::{BlendMode, composite_pixel, pixel_noise};
 use crate::geom::Rect;
-use crate::image::Image;
+use crate::image::{Image, Mask};
 use crate::layer::{Layer, LayerId, LayerKind};
 use crate::styles::{LayerStyles, Pass, render_passes};
 
@@ -23,6 +23,8 @@ struct StyleKey {
 #[derive(Default)]
 pub struct Compositor {
     cache: HashMap<LayerId, (StyleKey, Arc<Vec<Pass>>)>,
+    /// Vector masks rasterised (and combined with the pixel mask), per layer.
+    vmasks: HashMap<LayerId, (Option<u64>, crate::path::BezierPath, (u32, u32), Mask)>,
 }
 
 impl Compositor {
@@ -30,13 +32,34 @@ impl Compositor {
         Self::default()
     }
 
-    fn passes(&mut self, layer: &Layer) -> Option<Arc<Vec<Pass>>> {
+    /// The layer's effective mask: its pixel mask, times its vector mask if it has one.
+    fn mask_of(&mut self, layer: &Layer, w: u32, h: u32) -> Option<Mask> {
+        let raster = layer.active_mask();
+        let Some(path) = layer.vector_mask.as_ref().filter(|_| layer.mask_enabled) else { return raster.cloned() };
+        let key_gen = raster.map(|m| m.generation());
+        if let Some((g, p, size, m)) = self.vmasks.get(&layer.id) {
+            if *g == key_gen && p == path && *size == (w, h) {
+                return Some(m.clone());
+            }
+        }
+        let mut m = path.to_mask(w, h);
+        if let Some(r) = raster {
+            let rd = r.data();
+            for (i, v) in m.data_mut().iter_mut().enumerate() {
+                *v = ((*v as u32 * rd[i] as u32 + 127) / 255) as u8;
+            }
+        }
+        self.vmasks.insert(layer.id, (key_gen, path.clone(), (w, h), m.clone()));
+        Some(m)
+    }
+
+    fn passes(&mut self, layer: &Layer, mask: Option<&Mask>) -> Option<Arc<Vec<Pass>>> {
         if !layer.styles.any() || layer.pixels.width() == 0 {
             return None;
         }
         let key = StyleKey {
             pixels: layer.pixels.generation(),
-            mask: layer.active_mask().map(|m| m.generation()),
+            mask: mask.map(|m| m.generation()),
             styles: layer.styles.clone(),
             blend: layer.blend,
         };
@@ -45,7 +68,7 @@ impl Compositor {
                 return Some(p.clone());
             }
         }
-        let content = match layer.active_mask() {
+        let content = match mask {
             Some(m) => {
                 let mut c = layer.pixels.clone();
                 let md = m.data();
@@ -64,6 +87,7 @@ impl Compositor {
     /// Drop cache entries for layers that no longer exist.
     pub fn prune(&mut self, layers: &[Layer]) {
         self.cache.retain(|id, _| layers.iter().any(|l| l.id == *id));
+        self.vmasks.retain(|id, _| layers.iter().any(|l| l.id == *id && l.vector_mask.is_some()));
     }
 
     /// Composite the whole canvas.
@@ -99,14 +123,15 @@ impl Compositor {
             }
             if let LayerKind::Group { pass_through, .. } = layer.kind {
                 let children = tree.children.get(&layer.id).map(Vec::as_slice).unwrap_or(&[]);
-                let group_outer = Outer { parent: outer, mask: layer.active_mask().cloned(), w: c.w };
+                let gmask = self.mask_of(layer, c.w, c.h);
+                let group_outer = Outer { parent: outer, mask: gmask.clone(), w: c.w };
                 if pass_through && layer.blend == BlendMode::Normal {
                     self.draw_list(c, tree, children, out, k * layer.opacity, Some(&group_outer));
                 } else {
                     let mut tmp = Image::new(c.region.w, c.region.h);
                     self.draw_list(c, tree, children, &mut tmp, 1.0, None);
                     let pass = RegionPass { image: &tmp, blend: layer.blend, opacity: k * layer.opacity };
-                    blend_region(out, &pass, c, layer.active_mask(), outer, base);
+                    blend_region(out, &pass, c, gmask.as_ref(), outer, base);
                 }
                 continue;
             }
@@ -128,9 +153,10 @@ impl Compositor {
         let opacity = layer.opacity * k;
         let clip_alpha = |x: u32, y: u32| base.map_or(1.0, |b| b.content_alpha(x, y) as f32 / 255.0);
 
+        let eff_mask = self.mask_of(layer, c.w, c.h);
         if let LayerKind::Adjustment(adj) = &layer.kind {
             let prep = adj.prepare();
-            let mask = layer.active_mask();
+            let mask = eff_mask.as_ref();
             out.pixels_mut().par_chunks_mut(rw * 4).enumerate().for_each(|(ry, row)| {
                 let y = (region.y as usize + ry) as u32;
                 for (rx, p) in row.chunks_exact_mut(4).enumerate() {
@@ -158,7 +184,7 @@ impl Compositor {
         if layer.pixels.size() != (c.w, c.h) {
             return;
         }
-        let styled = self.passes(layer);
+        let styled = self.passes(layer, eff_mask.as_ref());
         let single;
         let passes: &[Pass] = match &styled {
             Some(p) => p,
@@ -167,7 +193,7 @@ impl Compositor {
                 &single
             }
         };
-        let mask = if styled.is_some() { None } else { layer.active_mask() };
+        let mask = if styled.is_some() { None } else { eff_mask.as_ref() };
         for pass in passes {
             let src = pass.image.pixels();
             let mode = pass.blend;
@@ -397,6 +423,25 @@ mod tests {
         let out = flatten(&[bg, l], 30, 30);
         assert_eq!(out.get(15, 15), Rgba::BLACK, "content hidden");
         assert!(out.get(8, 15).r() > 200, "stroke still drawn");
+    }
+
+    #[test]
+    fn vector_mask_clips_layer() {
+        use crate::path::{Anchor, BezierPath};
+        let bg = Layer::raster(1, "bg", Image::filled(20, 20, Rgba::BLACK));
+        let mut top = Layer::raster(2, "top", Image::filled(20, 20, Rgba::WHITE));
+        top.vector_mask = Some(BezierPath {
+            anchors: vec![
+                Anchor::corner((0.0, 0.0)),
+                Anchor::corner((10.0, 0.0)),
+                Anchor::corner((10.0, 20.0)),
+                Anchor::corner((0.0, 20.0)),
+            ],
+            closed: true,
+        });
+        let out = flatten(&[bg, top], 20, 20);
+        assert_eq!(out.get(5, 10), Rgba::WHITE);
+        assert_eq!(out.get(15, 10), Rgba::BLACK);
     }
 
     #[test]

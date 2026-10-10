@@ -626,12 +626,35 @@ impl Document {
         mask: impl Fn(&Mask) -> Mask,
         params: Params,
     ) {
+        let (ow, oh) = (self.width, self.height);
         for l in &mut self.layers {
             if l.kind.is_generated() {
                 match params {
                     Params::Rasterize => l.rasterize(),
                     _ => scale_params(&mut l.kind, &params),
                 }
+            }
+            // Vector masks follow moves and scales exactly; other transforms bake them into
+            // the pixel mask first.
+            match (&mut l.vector_mask, &params) {
+                (Some(vm), Params::Offset(dx, dy)) => vm.translate(*dx, *dy),
+                (Some(vm), Params::Scale(sx, sy)) => vm.map(|q| (q.0 * sx, q.1 * sy)),
+                (Some(_), Params::Rasterize) => {
+                    let vm = l.vector_mask.take().unwrap().to_mask(ow, oh);
+                    l.mask = Some(match l.mask.take() {
+                        Some(m) => {
+                            let d: Vec<u8> = m
+                                .data()
+                                .iter()
+                                .zip(vm.data())
+                                .map(|(&a, &b)| ((a as u32 * b as u32 + 127) / 255) as u8)
+                                .collect();
+                            Mask::from_raw(ow, oh, d)
+                        }
+                        None => vm,
+                    });
+                }
+                _ => {}
             }
             if l.kind.is_generated() {
                 l.render(nw, nh);
@@ -1007,6 +1030,11 @@ impl Document {
         if let Some(m) = &mut l.mask {
             if sel.is_none() {
                 *m = crate::filters::shift_mask(m, dx, dy);
+            }
+        }
+        if let Some(vm) = &mut l.vector_mask {
+            if sel.is_none() {
+                vm.translate(dx as f32, dy as f32);
             }
         }
         if let Some(s) = &mut self.selection {

@@ -105,6 +105,8 @@ pub fn action_label(a: &Action) -> String {
         Action::MaskDelete => "Delete".into(),
         Action::MaskToggle => "Disable / Enable".into(),
         Action::MaskInvert => "Invert".into(),
+        Action::VectorMaskFromPath => "Vector Mask from Current Path".into(),
+        Action::DeleteVectorMask => "Delete Vector Mask".into(),
         Action::ToggleClipping => "Create / Release Clipping Mask".into(),
         Action::GroupLayers => "Group Layers".into(),
         Action::Ungroup => "Ungroup Layers".into(),
@@ -337,6 +339,14 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
                 item(ui, out, Action::MaskToggle, has_mask);
                 item(ui, out, Action::MaskApply, has_mask);
                 item(ui, out, Action::MaskDelete, has_mask);
+                ui.separator();
+                item(ui, out, Action::VectorMaskFromPath, doc && app.active_path.is_some());
+                item(
+                    ui,
+                    out,
+                    Action::DeleteVectorMask,
+                    tab.and_then(|t| t.doc.active_layer()).is_some_and(|l| l.vector_mask.is_some()),
+                );
             });
             item(ui, out, Action::ToggleClipping, doc);
             item(ui, out, Action::ConvertToSmart, doc);
@@ -541,6 +551,8 @@ pub fn all_commands() -> Vec<Action> {
         Action::MaskDelete,
         Action::MaskToggle,
         Action::MaskInvert,
+        Action::VectorMaskFromPath,
+        Action::DeleteVectorMask,
         Action::ToggleClipping,
         Action::Rasterize,
         Action::ConvertToSmart,

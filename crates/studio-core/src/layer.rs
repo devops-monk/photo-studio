@@ -117,6 +117,8 @@ pub struct Layer {
     pub fill_opacity: f32,
     /// Colour label index (see `LABEL_COLORS`).
     pub label: Option<u8>,
+    /// A path that hides everything outside it (vector mask); combines with `mask`.
+    pub vector_mask: Option<crate::path::BezierPath>,
 }
 
 /// Layer colour labels: red, orange, yellow, green, blue, violet, grey.
@@ -149,6 +151,7 @@ impl Layer {
             source: None,
             fill_opacity: 1.0,
             label: None,
+            vector_mask: None,
         }
     }
 

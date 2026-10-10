@@ -212,6 +212,8 @@ struct LayerMeta {
     fill_opacity: f32,
     #[serde(default)]
     label: Option<u8>,
+    #[serde(default)]
+    vector_mask: Option<crate::path::BezierPath>,
 }
 
 fn one() -> f32 {
@@ -258,6 +260,7 @@ pub fn project_bytes(doc: &Document) -> Result<Vec<u8>> {
                 parent: l.parent,
                 fill_opacity: l.fill_opacity,
                 label: l.label,
+                vector_mask: l.vector_mask.clone(),
             })
             .collect(),
     };
@@ -365,6 +368,7 @@ pub fn project_from_bytes(bytes: &[u8]) -> Result<Document> {
         layer.parent = meta.parent;
         layer.fill_opacity = meta.fill_opacity;
         layer.label = meta.label;
+        layer.vector_mask = meta.vector_mask;
         doc.next_id = doc.next_id.max(meta.id + 1);
         doc.layers.push(layer);
     }

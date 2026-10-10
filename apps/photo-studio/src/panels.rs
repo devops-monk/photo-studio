@@ -935,6 +935,18 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 }
                 x += 46.0;
             }
+            if app.docs[active].doc.layers[i].vector_mask.is_some() {
+                let vr = egui::Rect::from_min_size(Pos2::new(x, rect.top() + 6.0), Vec2::new(32.0, 32.0));
+                p.rect(vr, 4.0, t.raised, Stroke::new(1.0, t.border), egui::StrokeKind::Outside);
+                p.text(
+                    vr.center(),
+                    egui::Align2::CENTER_CENTER,
+                    ph::BEZIER_CURVE,
+                    egui::FontId::proportional(16.0),
+                    Color32::from_rgb(191, 90, 242),
+                );
+                x += 38.0;
+            }
             // Name.
             let name_rect =
                 egui::Rect::from_min_max(Pos2::new(x + 2.0, rect.top()), Pos2::new(rect.right() - 44.0, rect.bottom()));
