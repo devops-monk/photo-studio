@@ -195,42 +195,132 @@ pub enum PolarMode {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Filter {
     // Blur
-    GaussianBlur { radius: f32 },
-    BoxBlur { radius: f32 },
-    MotionBlur { angle: f32, distance: f32 },
-    RadialBlur { amount: f32, mode: RadialMode, cx: f32, cy: f32 },
-    SurfaceBlur { radius: f32, threshold: f32 },
-    TiltShift { focus_y: f32, focus_height: f32, transition: f32, blur: f32 },
+    GaussianBlur {
+        radius: f32,
+    },
+    BoxBlur {
+        radius: f32,
+    },
+    MotionBlur {
+        angle: f32,
+        distance: f32,
+    },
+    RadialBlur {
+        amount: f32,
+        mode: RadialMode,
+        cx: f32,
+        cy: f32,
+    },
+    SurfaceBlur {
+        radius: f32,
+        threshold: f32,
+    },
+    TiltShift {
+        focus_y: f32,
+        focus_height: f32,
+        transition: f32,
+        blur: f32,
+    },
+    /// Blur Gallery's Iris Blur: sharp inside an ellipse, blurring outward.
+    IrisBlur {
+        cx: f32,
+        cy: f32,
+        rx: f32,
+        ry: f32,
+        transition: f32,
+        blur: f32,
+    },
     // Sharpen
     Sharpen,
     SharpenMore,
-    UnsharpMask { amount: f32, radius: f32, threshold: u8 },
+    UnsharpMask {
+        amount: f32,
+        radius: f32,
+        threshold: u8,
+    },
     // Noise
-    AddNoise { amount: f32, dist: NoiseDist, monochrome: bool, seed: u32 },
-    Median { radius: f32 },
-    ReduceNoise { strength: f32, preserve_details: f32 },
-    DustScratches { radius: f32, threshold: u8 },
+    AddNoise {
+        amount: f32,
+        dist: NoiseDist,
+        monochrome: bool,
+        seed: u32,
+    },
+    Median {
+        radius: f32,
+    },
+    ReduceNoise {
+        strength: f32,
+        preserve_details: f32,
+    },
+    DustScratches {
+        radius: f32,
+        threshold: u8,
+    },
     // Distort
-    Twirl { angle: f32 },
-    Wave { amplitude: f32, wavelength: f32, horizontal: bool, vertical: bool },
-    Ripple { amount: f32, size: f32 },
-    Pinch { amount: f32 },
-    Spherize { amount: f32 },
-    PolarCoordinates { mode: PolarMode },
+    Twirl {
+        angle: f32,
+    },
+    Wave {
+        amplitude: f32,
+        wavelength: f32,
+        horizontal: bool,
+        vertical: bool,
+    },
+    Ripple {
+        amount: f32,
+        size: f32,
+    },
+    Pinch {
+        amount: f32,
+    },
+    Spherize {
+        amount: f32,
+    },
+    PolarCoordinates {
+        mode: PolarMode,
+    },
     // Pixelate
-    Mosaic { cell: f32 },
-    Crystallize { cell: f32, seed: u32 },
-    ColorHalftone { radius: f32 },
+    Mosaic {
+        cell: f32,
+    },
+    Crystallize {
+        cell: f32,
+        seed: u32,
+    },
+    ColorHalftone {
+        radius: f32,
+    },
     // Stylize
-    Emboss { angle: f32, height: f32, amount: f32 },
+    Emboss {
+        angle: f32,
+        height: f32,
+        amount: f32,
+    },
     FindEdges,
-    GlowingEdges { width: f32, brightness: f32 },
-    OilPaint { radius: f32, levels: u8 },
+    GlowingEdges {
+        width: f32,
+        brightness: f32,
+    },
+    OilPaint {
+        radius: f32,
+        levels: u8,
+    },
     Solarize,
     // Render
-    Clouds { seed: u32, scale: f32 },
-    Vignette { amount: f32, midpoint: f32, feather: f32 },
-    LensFlare { cx: f32, cy: f32, brightness: f32 },
+    Clouds {
+        seed: u32,
+        scale: f32,
+    },
+    Vignette {
+        amount: f32,
+        midpoint: f32,
+        feather: f32,
+    },
+    LensFlare {
+        cx: f32,
+        cy: f32,
+        brightness: f32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -283,6 +373,7 @@ impl Filter {
             Self::RadialBlur { amount: 10.0, mode: RadialMode::Spin, cx: 0.5, cy: 0.5 },
             Self::SurfaceBlur { radius: 5.0, threshold: 15.0 },
             Self::TiltShift { focus_y: 0.5, focus_height: 0.2, transition: 0.2, blur: 12.0 },
+            Self::IrisBlur { cx: 0.5, cy: 0.5, rx: 0.25, ry: 0.25, transition: 0.2, blur: 15.0 },
             Self::Sharpen,
             Self::SharpenMore,
             Self::UnsharpMask { amount: 80.0, radius: 1.5, threshold: 0 },
@@ -318,6 +409,7 @@ impl Filter {
             Self::RadialBlur { .. } => "Radial Blur",
             Self::SurfaceBlur { .. } => "Surface Blur",
             Self::TiltShift { .. } => "Tilt-Shift",
+            Self::IrisBlur { .. } => "Iris Blur",
             Self::Sharpen => "Sharpen",
             Self::SharpenMore => "Sharpen More",
             Self::UnsharpMask { .. } => "Unsharp Mask",
@@ -352,7 +444,8 @@ impl Filter {
             | Self::MotionBlur { .. }
             | Self::RadialBlur { .. }
             | Self::SurfaceBlur { .. }
-            | Self::TiltShift { .. } => FilterGroup::Blur,
+            | Self::TiltShift { .. }
+            | Self::IrisBlur { .. } => FilterGroup::Blur,
             Self::Sharpen | Self::SharpenMore | Self::UnsharpMask { .. } => FilterGroup::Sharpen,
             Self::AddNoise { .. } | Self::Median { .. } | Self::ReduceNoise { .. } | Self::DustScratches { .. } => {
                 FilterGroup::Noise
@@ -382,7 +475,7 @@ impl Filter {
     /// must run on the full layer rather than a crop around the selection.
     fn is_global(&self) -> bool {
         matches!(self.group(), FilterGroup::Distort | FilterGroup::Render)
-            || matches!(self, Self::RadialBlur { .. } | Self::TiltShift { .. })
+            || matches!(self, Self::RadialBlur { .. } | Self::TiltShift { .. } | Self::IrisBlur { .. })
     }
 
     /// How far (in pixels) a filter reads around each output pixel.
@@ -508,6 +601,26 @@ impl Filter {
                     let t = (d / transition.max(1e-3)).clamp(0.0, 1.0);
                     let t = t * t * (3.0 - 2.0 * t);
                     for (x, p) in row.chunks_exact_mut(4).enumerate() {
+                        let s = &src[(y * iw + x) * 4..(y * iw + x) * 4 + 4];
+                        for c in 0..4 {
+                            p[c] = (p[c] as f32 + (s[c] as f32 - p[c] as f32) * t).round() as u8;
+                        }
+                    }
+                });
+                out
+            }
+            Self::IrisBlur { cx, cy, rx, ry, transition, blur } => {
+                let blurred = gaussian_blur(img, *blur);
+                let src = blurred.pixels();
+                let iw = img.width() as usize;
+                let mut out = img.clone();
+                out.pixels_mut().par_chunks_mut(iw * 4).enumerate().for_each(|(y, row)| {
+                    for (x, p) in row.chunks_exact_mut(4).enumerate() {
+                        let nx = ((x as f32 + 0.5) / w - cx) / rx.max(1e-3);
+                        let ny = ((y as f32 + 0.5) / h - cy) / ry.max(1e-3);
+                        let d = (nx * nx + ny * ny).sqrt() - 1.0;
+                        let t = (d / transition.max(1e-3)).clamp(0.0, 1.0);
+                        let t = t * t * (3.0 - 2.0 * t);
                         let s = &src[(y * iw + x) * 4..(y * iw + x) * 4 + 4];
                         for c in 0..4 {
                             p[c] = (p[c] as f32 + (s[c] as f32 - p[c] as f32) * t).round() as u8;

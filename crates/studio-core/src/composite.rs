@@ -163,7 +163,7 @@ impl Compositor {
         let passes: &[Pass] = match &styled {
             Some(p) => p,
             None => {
-                single = [Pass { image: layer.pixels.clone(), blend: layer.blend, opacity: 1.0 }];
+                single = [Pass { image: layer.pixels.clone(), blend: layer.blend, opacity: 1.0, body: true }];
                 &single
             }
         };
@@ -171,7 +171,7 @@ impl Compositor {
         for pass in passes {
             let src = pass.image.pixels();
             let mode = pass.blend;
-            let kk = pass.opacity * opacity;
+            let kk = pass.opacity * opacity * if pass.body { layer.fill_opacity } else { 1.0 };
             out.pixels_mut().par_chunks_mut(rw * 4).enumerate().for_each(|(ry, row)| {
                 let y = region.y as usize + ry;
                 for (rx, p) in row.chunks_exact_mut(4).enumerate() {
@@ -379,6 +379,24 @@ mod tests {
         assert_eq!(flatten(&[bg.clone(), child.clone(), inv.clone(), iso], 1, 1).get(0, 0), Rgba::rgb(10, 10, 10));
         let pt = Layer::with_kind(4, "g", LayerKind::Group { pass_through: true, collapsed: false }, 1, 1);
         assert_eq!(flatten(&[bg, child, inv, pt], 1, 1).get(0, 0), Rgba::rgb(245, 245, 245));
+    }
+
+    #[test]
+    fn fill_opacity_spares_effects() {
+        let mut px = Image::new(30, 30);
+        for y in 10..20 {
+            for x in 10..20 {
+                px.put(x, y, Rgba::WHITE);
+            }
+        }
+        let bg = Layer::raster(1, "bg", Image::filled(30, 30, Rgba::BLACK));
+        let mut l = Layer::raster(2, "l", px);
+        l.fill_opacity = 0.0;
+        l.styles.stroke.enabled = true;
+        l.styles.stroke.color = Rgba::rgb(255, 0, 0);
+        let out = flatten(&[bg, l], 30, 30);
+        assert_eq!(out.get(15, 15), Rgba::BLACK, "content hidden");
+        assert!(out.get(8, 15).r() > 200, "stroke still drawn");
     }
 
     #[test]

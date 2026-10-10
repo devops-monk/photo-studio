@@ -73,6 +73,7 @@ pub enum Action {
     NewLayer,
     NewFillSolid,
     NewFillGradient,
+    NewFillPattern,
     NewAdjustmentLayer(Adjustment),
     DuplicateLayer,
     DeleteLayer,

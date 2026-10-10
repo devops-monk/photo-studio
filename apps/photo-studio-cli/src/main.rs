@@ -55,7 +55,7 @@ Adjustments (--adjust):
 Filters (--filter):
     blur=<radius>            box=<radius>           motion=<angle,distance>
     radial=<amount>          zoom=<amount>          surface=<radius,threshold>
-    tiltshift=<blur>         sharpen                sharpenmore
+    tiltshift=<blur>         iris=<blur>            sharpen    sharpenmore
     unsharp=<amount,radius[,threshold]>             noise=<amount>
     median=<radius>          denoise=<strength>     dust=<radius,threshold>
     twirl=<degrees>          wave=<amplitude,wavelength>   ripple=<amount>
@@ -178,6 +178,7 @@ fn parse_filter(spec: &str) -> Result<Filter, String> {
         "zoom" => Filter::RadialBlur { amount: a(0, 10.0)?, mode: RadialMode::Zoom, cx: 0.5, cy: 0.5 },
         "surface" => Filter::SurfaceBlur { radius: a(0, 5.0)?, threshold: a(1, 15.0)? },
         "tiltshift" => Filter::TiltShift { focus_y: 0.5, focus_height: 0.2, transition: 0.2, blur: a(0, 12.0)? },
+        "iris" => Filter::IrisBlur { cx: 0.5, cy: 0.5, rx: 0.25, ry: 0.25, transition: 0.2, blur: a(0, 15.0)? },
         "sharpen" => Filter::Sharpen,
         "sharpenmore" => Filter::SharpenMore,
         "unsharp" => Filter::UnsharpMask { amount: a(0, 80.0)?, radius: a(1, 1.5)?, threshold: a(2, 0.0)? as u8 },

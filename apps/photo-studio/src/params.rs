@@ -468,6 +468,18 @@ pub fn filter_ui(ui: &mut Ui, f: &mut Filter) -> bool {
             c |= slider_row(ui, "Blur", blur, 1.0..=80.0, " px", 0);
             (*focus_y, *focus_height, *transition) = (fy / 100.0, fh / 100.0, tr / 100.0);
         }
+        Filter::IrisBlur { cx, cy, rx, ry, transition, blur } => {
+            for (label, v) in
+                [("Center X", cx), ("Center Y", cy), ("Width", rx), ("Height", ry), ("Transition", transition)]
+            {
+                let mut p = *v * 100.0;
+                if slider_row(ui, label, &mut p, 1.0..=100.0, "%", 0) {
+                    *v = p / 100.0;
+                    c = true;
+                }
+            }
+            c |= slider_row(ui, "Blur", blur, 1.0..=80.0, " px", 0);
+        }
         Filter::UnsharpMask { amount, radius, threshold } => {
             c |= slider_row(ui, "Amount", amount, 1.0..=500.0, "%", 0);
             c |= slider_row(ui, "Radius", radius, 0.1..=100.0, " px", 1);

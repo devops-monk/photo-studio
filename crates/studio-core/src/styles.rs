@@ -280,6 +280,8 @@ pub struct Pass {
     pub image: Image,
     pub blend: BlendMode,
     pub opacity: f32,
+    /// The layer's own content (fill opacity applies to it, not to the effects).
+    pub body: bool,
 }
 
 fn colorize(alpha: &Mask, c: Rgba) -> Image {
@@ -317,12 +319,12 @@ pub fn render_passes(content: &Image, styles: &LayerStyles, blend: BlendMode) ->
     if ds.enabled {
         let (dx, dy) = offset(ds.angle, ds.distance);
         let m = soft(&shift_mask(&alpha, dx, dy), ds.size, ds.spread);
-        below.push(Pass { image: colorize(&m, ds.color), blend: ds.blend, opacity: ds.opacity });
+        below.push(Pass { image: colorize(&m, ds.color), blend: ds.blend, opacity: ds.opacity, body: false });
     }
     let og = &styles.outer_glow;
     if og.enabled {
         let m = soft(&alpha, og.size, og.spread);
-        below.push(Pass { image: colorize(&m, og.color), blend: BlendMode::Screen, opacity: og.opacity });
+        below.push(Pass { image: colorize(&m, og.color), blend: BlendMode::Screen, opacity: og.opacity, body: false });
     }
 
     let mut body = content.clone();
@@ -387,14 +389,29 @@ pub fn render_passes(content: &Image, styles: &LayerStyles, blend: BlendMode) ->
             })
             .collect();
         let m = Mask::from_raw(alpha.width(), alpha.height(), data);
-        above.push(Pass { image: colorize(&m, sa.color), blend: BlendMode::Multiply, opacity: sa.opacity });
+        above.push(Pass {
+            image: colorize(&m, sa.color),
+            blend: BlendMode::Multiply,
+            opacity: sa.opacity,
+            body: false,
+        });
     }
 
     let bv = &styles.bevel;
     if bv.enabled {
         let (hi, sh) = bevel_masks(&alpha, bv);
-        let hp = Pass { image: colorize(&hi, bv.highlight), blend: BlendMode::Screen, opacity: bv.highlight_opacity };
-        let sp = Pass { image: colorize(&sh, bv.shadow), blend: BlendMode::Multiply, opacity: bv.shadow_opacity };
+        let hp = Pass {
+            image: colorize(&hi, bv.highlight),
+            blend: BlendMode::Screen,
+            opacity: bv.highlight_opacity,
+            body: false,
+        };
+        let sp = Pass {
+            image: colorize(&sh, bv.shadow),
+            blend: BlendMode::Multiply,
+            opacity: bv.shadow_opacity,
+            body: false,
+        };
         if bv.style == BevelStyle::Outer {
             below.push(sp);
             below.push(hp);
@@ -411,14 +428,14 @@ pub fn render_passes(content: &Image, styles: &LayerStyles, blend: BlendMode) ->
         inv.invert();
         let m = soft(&shift_mask(&inv, dx, dy), is.size, is.spread);
         let m = mul_masks(&m, &alpha);
-        above.push(Pass { image: colorize(&m, is.color), blend: is.blend, opacity: is.opacity });
+        above.push(Pass { image: colorize(&m, is.color), blend: is.blend, opacity: is.opacity, body: false });
     }
     let ig = &styles.inner_glow;
     if ig.enabled {
         let mut inv = alpha.clone();
         inv.invert();
         let m = mul_masks(&soft(&inv, ig.size, ig.spread), &alpha);
-        above.push(Pass { image: colorize(&m, ig.color), blend: BlendMode::Screen, opacity: ig.opacity });
+        above.push(Pass { image: colorize(&m, ig.color), blend: BlendMode::Screen, opacity: ig.opacity, body: false });
     }
     let st = &styles.stroke;
     if st.enabled {
@@ -432,11 +449,11 @@ pub fn render_passes(content: &Image, styles: &LayerStyles, blend: BlendMode) ->
                 Mask::from_raw(alpha.width(), alpha.height(), data)
             }
         };
-        above.push(Pass { image: colorize(&m, st.color), blend: BlendMode::Normal, opacity: st.opacity });
+        above.push(Pass { image: colorize(&m, st.color), blend: BlendMode::Normal, opacity: st.opacity, body: false });
     }
 
     let mut passes = below;
-    passes.push(Pass { image: body, blend, opacity: 1.0 });
+    passes.push(Pass { image: body, blend, opacity: 1.0, body: true });
     passes.extend(above);
     passes
 }

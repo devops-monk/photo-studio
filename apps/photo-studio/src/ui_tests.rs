@@ -945,3 +945,21 @@ fn content_aware_move_tool() {
     );
     assert_eq!(h.state().tab().unwrap().history.undo_label(), Some("Content-Aware Move"));
 }
+
+#[test]
+fn pattern_fill_fill_opacity_and_labels_round_trip() {
+    let mut h = harness();
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, crate::actions::Action::NewFillPattern);
+    let tab = h.state_mut().tab_mut().unwrap();
+    let l = tab.doc.layers.last_mut().unwrap();
+    assert_ne!(l.pixels.get(2, 2), l.pixels.get(10, 2), "checker pattern drawn");
+    l.fill_opacity = 0.4;
+    l.label = Some(3);
+    let bytes = studio_core::io::project_bytes(&tab.doc).unwrap();
+    let back = studio_core::io::project_from_bytes(&bytes).unwrap();
+    let b = back.layers.last().unwrap();
+    assert_eq!(b.kind, tab.doc.layers.last().unwrap().kind);
+    assert_eq!((b.fill_opacity, b.label), (0.4, Some(3)));
+    assert_eq!(back.composite(), tab.doc.composite());
+}

@@ -970,6 +970,15 @@ impl App {
                     d.add_layer_of_kind("Color Fill", LayerKind::Fill(FillLayer::Solid(c)));
                 });
             }
+            Action::NewFillPattern => {
+                let (fg, bg) = (self.fg, self.bg);
+                self.edit("New Fill Layer", |d| {
+                    d.add_layer_of_kind(
+                        "Pattern Fill",
+                        LayerKind::Fill(FillLayer::Pattern { pattern: 0, fg, bg, scale: 100.0 }),
+                    );
+                });
+            }
             Action::NewFillGradient => {
                 let (fg, bg) = (self.fg, self.bg);
                 self.edit("New Fill Layer", |d| {

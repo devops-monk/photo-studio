@@ -206,6 +206,14 @@ struct LayerMeta {
     styles: LayerStyles,
     #[serde(default)]
     parent: Option<LayerId>,
+    #[serde(default = "one")]
+    fill_opacity: f32,
+    #[serde(default)]
+    label: Option<u8>,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 pub(crate) fn png_bytes(img: &image::DynamicImage) -> Result<Vec<u8>> {
@@ -245,6 +253,8 @@ pub fn project_bytes(doc: &Document) -> Result<Vec<u8>> {
                 clip: l.clip,
                 styles: l.styles.clone(),
                 parent: l.parent,
+                fill_opacity: l.fill_opacity,
+                label: l.label,
             })
             .collect(),
     };
@@ -349,6 +359,8 @@ pub fn project_from_bytes(bytes: &[u8]) -> Result<Document> {
         layer.clip = meta.clip;
         layer.styles = meta.styles;
         layer.parent = meta.parent;
+        layer.fill_opacity = meta.fill_opacity;
+        layer.label = meta.label;
         doc.next_id = doc.next_id.max(meta.id + 1);
         doc.layers.push(layer);
     }

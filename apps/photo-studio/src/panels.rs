@@ -438,6 +438,33 @@ fn properties(app: &mut App, ui: &mut Ui) {
             label = "Edit Fill";
             match fl {
                 FillLayer::Solid(c) => changed |= color_picker(ui, "fill-solid", c),
+                FillLayer::Pattern { pattern, fg, bg, scale } => {
+                    let names: Vec<&str> = studio_core::paint::builtin_patterns(*fg, *bg).iter().map(|p| p.0).collect();
+                    egui::ComboBox::from_id_salt("fill-pattern")
+                        .selected_text(names.get(*pattern).copied().unwrap_or(""))
+                        .show_ui(ui, |ui| {
+                            for (k, n) in names.iter().enumerate() {
+                                changed |= ui.selectable_value(pattern, k, *n).changed();
+                            }
+                        });
+                    for (lbl, col) in [("Foreground", fg), ("Background", bg)] {
+                        ui.horizontal(|ui| {
+                            label_dim(ui, lbl);
+                            let mut cc = c32(*col);
+                            if egui::color_picker::color_edit_button_srgba(
+                                ui,
+                                &mut cc,
+                                egui::color_picker::Alpha::OnlyBlend,
+                            )
+                            .changed()
+                            {
+                                *col = rgba(cc);
+                                changed = true;
+                            }
+                        });
+                    }
+                    changed |= slider_row(ui, "Scale", scale, 10.0..=1000.0, "%", 0);
+                }
                 FillLayer::Gradient { gradient, shape, start, end } => {
                     egui::ComboBox::from_id_salt("fill-grad-shape").selected_text(shape.label()).show_ui(ui, |ui| {
                         for s in GradientShape::ALL {
@@ -676,6 +703,12 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 layer.opacity = pct / 100.0;
                 changed = true;
             }
+            let mut fill = layer.fill_opacity * 100.0;
+            label_dim(ui, "Fill").on_hover_text("Content opacity; layer styles stay at full strength");
+            if ui.add(egui::DragValue::new(&mut fill).range(0.0..=100.0).suffix("%").speed(1.0)).changed() {
+                layer.fill_opacity = fill / 100.0;
+                changed = true;
+            }
         });
         ui.horizontal(|ui| {
             label_dim(ui, "Lock");
@@ -736,6 +769,7 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
             .collect()
     };
     let mut toggle_collapse: Option<usize> = None;
+    let mut set_label: Option<(usize, Option<u8>)> = None;
     egui::ScrollArea::vertical().max_height(list_h).auto_shrink([false, false]).show(ui, |ui| {
         for (row_pos, &i) in rows.iter().enumerate() {
             let depth = app.docs[active].doc.depth(i);
@@ -782,6 +816,15 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 Color32::TRANSPARENT
             };
             p.rect_filled(rect, CornerRadius::same(8), bg);
+            if let Some(lc) =
+                app.docs[active].doc.layers[i].label.and_then(|k| studio_core::layer::LABEL_COLORS.get(k as usize))
+            {
+                p.rect_filled(
+                    egui::Rect::from_min_size(rect.min + Vec2::new(1.0, 6.0), Vec2::new(3.0, rect.height() - 12.0)),
+                    2.0,
+                    c32(*lc),
+                );
+            }
             let mut x = rect.left() + 6.0 + depth as f32 * 14.0;
             // Visibility.
             let eye = egui::Rect::from_center_size(Pos2::new(x + 10.0, rect.center().y), Vec2::splat(20.0));
@@ -969,6 +1012,20 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 }
             }
             resp.context_menu(|ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    if ui.small_button("None").clicked() {
+                        set_label = Some((i, None));
+                        ui.close();
+                    }
+                    for (k, c) in studio_core::layer::LABEL_COLORS.iter().enumerate() {
+                        if swatch(ui, *c, Vec2::splat(16.0), false).clicked() {
+                            set_label = Some((i, Some(k as u8)));
+                            ui.close();
+                        }
+                    }
+                });
+                ui.separator();
                 if ui.button("Duplicate Layer").clicked() {
                     select = Some(i);
                     actions.push(Action::DuplicateLayer);
@@ -1025,6 +1082,10 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
         }
         app.props = Default::default();
     }
+    if let Some((i, lab)) = set_label {
+        tab.doc.layers[i].label = lab;
+        tab.commit("Color Label");
+    }
     if let Some(i) = toggle_collapse {
         if let LayerKind::Group { collapsed, .. } = &mut tab.doc.layers[i].kind {
             *collapsed = !*collapsed;
@@ -1066,6 +1127,9 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
             }
             if ui.button("Gradient…").clicked() {
                 actions.push(Action::NewFillGradient);
+            }
+            if ui.button("Pattern…").clicked() {
+                actions.push(Action::NewFillPattern);
             }
             ui.separator();
             for a in Adjustment::catalog() {

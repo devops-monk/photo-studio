@@ -35,7 +35,19 @@ pub fn compose_xform(x: &[f32; 6], t: &crate::geom::Affine) -> [f32; 6] {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum FillLayer {
     Solid(Rgba),
-    Gradient { gradient: Gradient, shape: GradientShape, start: (f32, f32), end: (f32, f32) },
+    Gradient {
+        gradient: Gradient,
+        shape: GradientShape,
+        start: (f32, f32),
+        end: (f32, f32),
+    },
+    /// A built-in pattern (`paint::builtin_patterns`), tiled at `scale` percent.
+    Pattern {
+        pattern: usize,
+        fg: Rgba,
+        bg: Rgba,
+        scale: f32,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -101,7 +113,22 @@ pub struct Layer {
     pub parent: Option<LayerId>,
     /// Original pixels of a smart object.
     pub source: Option<Image>,
+    /// Opacity of the content only; layer styles keep `opacity`.
+    pub fill_opacity: f32,
+    /// Colour label index (see `LABEL_COLORS`).
+    pub label: Option<u8>,
 }
+
+/// Layer colour labels: red, orange, yellow, green, blue, violet, grey.
+pub const LABEL_COLORS: [Rgba; 7] = [
+    Rgba::rgb(255, 69, 58),
+    Rgba::rgb(255, 159, 10),
+    Rgba::rgb(255, 214, 10),
+    Rgba::rgb(48, 209, 88),
+    Rgba::rgb(10, 132, 255),
+    Rgba::rgb(191, 90, 242),
+    Rgba::rgb(142, 142, 147),
+];
 
 impl Layer {
     pub fn raster(id: LayerId, name: impl Into<String>, pixels: Image) -> Self {
@@ -120,6 +147,8 @@ impl Layer {
             styles: LayerStyles::default(),
             parent: None,
             source: None,
+            fill_opacity: 1.0,
+            label: None,
         }
     }
 
@@ -173,6 +202,22 @@ impl Layer {
             LayerKind::Fill(FillLayer::Solid(c)) => self.pixels = Image::filled(w, h, *c),
             LayerKind::Fill(FillLayer::Gradient { gradient, shape, start, end }) => {
                 self.pixels = crate::paint::render_gradient(w, h, gradient, *shape, *start, *end)
+            }
+            LayerKind::Fill(FillLayer::Pattern { pattern, fg, bg, scale }) => {
+                let tiles = crate::paint::builtin_patterns(*fg, *bg);
+                let Some((_, tile)) = tiles.get(*pattern).or(tiles.first()) else { return };
+                let k = (scale / 100.0).max(0.05);
+                let (tw, th) = (tile.width().max(1), tile.height().max(1));
+                let mut img = Image::new(w, h);
+                let px = img.pixels_mut();
+                for y in 0..h {
+                    for x in 0..w {
+                        let c = tile.get(((x as f32 / k) as u32) % tw, ((y as f32 / k) as u32) % th);
+                        let i = (y as usize * w as usize + x as usize) * 4;
+                        px[i..i + 4].copy_from_slice(&c.0);
+                    }
+                }
+                self.pixels = img;
             }
             LayerKind::Smart { filters, xform } => {
                 let Some(src) = &self.source else { return };

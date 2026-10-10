@@ -86,6 +86,7 @@ pub fn action_label(a: &Action) -> String {
         Action::NewLayer => "New Layer".into(),
         Action::NewFillSolid => "Solid Color".into(),
         Action::NewFillGradient => "Gradient".into(),
+        Action::NewFillPattern => "Pattern".into(),
         Action::NewAdjustmentLayer(a) => a.label().into(),
         Action::DuplicateLayer => "Duplicate Layer".into(),
         Action::DeleteLayer => "Delete Layer".into(),
@@ -301,6 +302,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             ui.menu_button("New Fill Layer", |ui| {
                 item(ui, out, Action::NewFillSolid, doc);
                 item(ui, out, Action::NewFillGradient, doc);
+                item(ui, out, Action::NewFillPattern, doc);
             });
             ui.menu_button("New Adjustment Layer", |ui| {
                 for a in Adjustment::catalog() {
@@ -514,6 +516,7 @@ pub fn all_commands() -> Vec<Action> {
         Action::Ungroup,
         Action::NewFillSolid,
         Action::NewFillGradient,
+        Action::NewFillPattern,
         Action::DuplicateLayer,
         Action::DeleteLayer,
         Action::LayerViaCopy,
@@ -589,7 +592,9 @@ pub fn palette_label(a: &Action) -> String {
         Action::Modify(_) => format!("Select › Modify › {}", action_label(a)),
         Action::RotateCanvas(_) => format!("Image Rotation › {}", action_label(a)),
         Action::FlipLayer(_) | Action::RotateLayer(_) => format!("Transform › {}", action_label(a)),
-        Action::NewFillSolid | Action::NewFillGradient => format!("New Fill Layer › {}", action_label(a)),
+        Action::NewFillSolid | Action::NewFillGradient | Action::NewFillPattern => {
+            format!("New Fill Layer › {}", action_label(a))
+        }
         _ => action_label(a).trim_end_matches('…').to_string(),
     }
 }
