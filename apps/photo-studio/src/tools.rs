@@ -30,6 +30,7 @@ pub enum Tool {
     RedEye,
     Brush,
     Pencil,
+    MixerBrush,
     CloneStamp,
     PatternStamp,
     HistoryBrush,
@@ -74,7 +75,7 @@ pub const GROUPS: &[&[Tool]] = &[
     &[Tool::Crop],
     &[Tool::Eyedropper, Tool::Ruler],
     &[Tool::SpotHeal, Tool::Remove, Tool::Heal, Tool::Patch, Tool::ContentMove, Tool::RedEye],
-    &[Tool::Brush, Tool::Pencil],
+    &[Tool::Brush, Tool::Pencil, Tool::MixerBrush],
     &[Tool::CloneStamp, Tool::PatternStamp],
     &[Tool::HistoryBrush],
     &[Tool::Eraser, Tool::BackgroundEraser, Tool::MagicEraser],
@@ -132,6 +133,7 @@ impl Tool {
             Self::Heal => "Healing Brush",
             Self::Brush => "Brush",
             Self::Pencil => "Pencil",
+            Self::MixerBrush => "Mixer Brush",
             Self::CloneStamp => "Clone Stamp",
             Self::Eraser => "Eraser",
             Self::Gradient => "Gradient",
@@ -189,6 +191,7 @@ impl Tool {
             Self::ContentMove => ph::ARROWS_OUT,
             Self::Brush => ph::PAINT_BRUSH,
             Self::Pencil => ph::PENCIL_SIMPLE,
+            Self::MixerBrush => ph::PAINT_BRUSH_HOUSEHOLD,
             Self::CloneStamp => ph::STAMP,
             Self::Eraser => ph::ERASER,
             Self::Gradient => ph::GRADIENT,
@@ -229,7 +232,7 @@ impl Tool {
             Self::Crop => Key::C,
             Self::Eyedropper | Self::Ruler => Key::I,
             Self::SpotHeal | Self::Heal | Self::RedEye | Self::Remove | Self::Patch | Self::ContentMove => Key::J,
-            Self::Brush | Self::Pencil => Key::B,
+            Self::Brush | Self::Pencil | Self::MixerBrush => Key::B,
             Self::CloneStamp | Self::PatternStamp => Key::S,
             Self::HistoryBrush => Key::Y,
             Self::Eraser | Self::BackgroundEraser | Self::MagicEraser => Key::E,
@@ -264,6 +267,7 @@ impl Tool {
             self,
             Self::Brush
                 | Self::Pencil
+                | Self::MixerBrush
                 | Self::Eraser
                 | Self::CloneStamp
                 | Self::PatternStamp
@@ -320,6 +324,7 @@ impl Tool {
             Self::ContentMove => "Outline an object, then drag it; the gap fills itself",
             Self::Heal | Self::CloneStamp => "Alt-click to set the source, then paint",
             Self::Brush | Self::Pencil => "Paint · [ and ] change size · Shift-click draws a straight line",
+            Self::MixerBrush => "Paint that mixes with the colours already on the canvas",
             Self::Eraser => "Erase to transparency",
             Self::BackgroundEraser => "Erases the color under the centre of the brush, sparing edges",
             Self::MagicEraser => "Click to erase similar connected colors",

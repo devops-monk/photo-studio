@@ -519,6 +519,9 @@ fn begin_stroke(app: &mut App, ctx: &egui::Context, p: (f32, f32)) -> bool {
         Tool::Blur => (StrokeKind::Blur { strength: opts.strength }, "Blur Tool", tip),
         Tool::Sharpen => (StrokeKind::Sharpen { strength: opts.strength }, "Sharpen Tool", tip),
         Tool::Smudge => (StrokeKind::Smudge { strength: opts.strength }, "Smudge", tip),
+        Tool::MixerBrush => {
+            (StrokeKind::Mixer { wet: opts.strength, load: opts.flow * 0.5, color: fg }, "Mixer Brush", tip)
+        }
         Tool::Liquify => (
             StrokeKind::Warp { strength: opts.strength },
             "Liquify",

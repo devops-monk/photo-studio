@@ -489,6 +489,12 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     }
                 }
             }
+            Tool::MixerBrush => {
+                tip_controls(ui, &mut o.tip, true);
+                pct(ui, "Wet", &mut o.strength);
+                pct(ui, "Load", &mut o.flow);
+                label_dim(ui, "Paint from the foreground color mixes with the canvas");
+            }
             Tool::Blur | Tool::Sharpen | Tool::Smudge | Tool::Liquify => {
                 tip_controls(ui, &mut o.tip, true);
                 pct(ui, "Strength", &mut o.strength);

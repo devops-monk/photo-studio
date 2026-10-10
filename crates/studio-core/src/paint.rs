@@ -202,6 +202,12 @@ pub enum StrokeKind {
         bg: Rgba,
         blend: BlendMode,
     },
+    /// Mixer Brush: smudges while reloading paint from `color` (`load`, 0..1, per dab).
+    Mixer {
+        wet: f32,
+        load: f32,
+        color: Rgba,
+    },
     /// Liquify's Forward Warp: push pixels along the drag.
     Warp {
         strength: f32,
@@ -363,8 +369,15 @@ impl StrokeEngine {
                 }
                 self.resolve(target, rect);
             }
-            StrokeKind::Smudge { strength } => {
-                let s = *strength;
+            StrokeKind::Smudge { .. } | StrokeKind::Mixer { .. } => {
+                // Mixer: the brush's reservoir is reloaded with paint on every dab.
+                let (s, paint) = match &self.kind {
+                    StrokeKind::Mixer { wet, load, color } => {
+                        (wet.max(0.05), Some((color.to_f32(), load.clamp(0.0, 1.0))))
+                    }
+                    StrokeKind::Smudge { strength } => (*strength, None),
+                    _ => unreachable!(),
+                };
                 let size = rect.w as usize * rect.h as usize;
                 let carry = self.carry.get_or_insert_with(Vec::new);
                 let fresh = carry.len() != size;
@@ -372,16 +385,38 @@ impl StrokeEngine {
                     carry.clear();
                     for y in rect.y..rect.bottom() {
                         for x in rect.x..rect.right() {
-                            carry.push(target.get(x as u32, y as u32).to_f32());
+                            let mut c = target.get(x as u32, y as u32).to_f32();
+                            if let Some((pc, _)) = paint {
+                                for ch in 0..4 {
+                                    c[ch] = c[ch] * 0.3 + pc[ch] * 0.7;
+                                }
+                            }
+                            carry.push(c);
                         }
                     }
-                    return rect;
+                    if paint.is_none() {
+                        return rect;
+                    }
+                }
+                // Smudge: deposit by `s`, pick up 15%. Mixer: deposit half, pick up canvas by
+                // wetness, and reload paint by load × dryness.
+                let (deposit, pickup) = match paint {
+                    Some(_) => (0.5, 0.5 * s),
+                    None => (s, 0.15),
+                };
+                if let Some((pc, load)) = paint {
+                    let reload = load * (1.0 - s) * 0.5;
+                    for c in carry.iter_mut() {
+                        for ch in 0..4 {
+                            c[ch] += (pc[ch] - c[ch]) * reload;
+                        }
+                    }
                 }
                 let px = target.pixels_mut();
                 let mut k = 0;
                 for y in rect.y..rect.bottom() {
                     for x in rect.x..rect.right() {
-                        let c = cov_at(x, y) * s;
+                        let c = cov_at(x, y) * deposit;
                         let i = (y as usize * w + x as usize) * 4;
                         let cur = [
                             px[i] as f32 / 255.0,
@@ -393,7 +428,7 @@ impl StrokeEngine {
                         for ch in 0..4 {
                             out[ch] = cur[ch] + (carry[k][ch] - cur[ch]) * c;
                             px[i + ch] = to_u8(out[ch]);
-                            carry[k][ch] = carry[k][ch] * 0.85 + out[ch] * 0.15;
+                            carry[k][ch] = carry[k][ch] * (1.0 - pickup) + out[ch] * pickup;
                         }
                         k += 1;
                     }
@@ -880,6 +915,25 @@ mod tests {
         }
         let colours: std::collections::HashSet<[u8; 4]> = (10..190).step_by(14).map(|x| img.get(x, 20).0).collect();
         assert!(colours.len() > 4, "hues vary: {colours:?}");
+    }
+
+    #[test]
+    fn mixer_blends_paint_with_canvas() {
+        let mut img = Image::filled(80, 20, Rgba::rgb(0, 0, 255));
+        let tip = BrushTip { size: 14.0, hardness: 1.0, spacing: 0.1, ..Default::default() };
+        let mut s = StrokeEngine::new(
+            &img,
+            StrokeKind::Mixer { wet: 0.6, load: 0.3, color: Rgba::rgb(255, 255, 0) },
+            tip,
+            1.0,
+            1.0,
+            None,
+        );
+        for x in 10..70 {
+            s.stroke_to(&mut img, x as f32, 10.0, 1.0);
+        }
+        let c = img.get(40, 10);
+        assert!(c.r() > 60 && c.b() > 30, "a mix of yellow paint and blue canvas: {c:?}");
     }
 
     #[test]
