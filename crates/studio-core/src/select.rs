@@ -289,6 +289,51 @@ pub fn select_object(img: &Image, area: Rect) -> Mask {
     out
 }
 
+/// Edge strength (Sobel magnitude of luminance) for the Magnetic Lasso, 0..255.
+pub fn edge_map(img: &Image) -> Mask {
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    let lum: Vec<f32> =
+        img.pixels().chunks_exact(4).map(|p| crate::color::luma(p[0] as f32, p[1] as f32, p[2] as f32)).collect();
+    let at = |x: i32, y: i32| lum[(y.clamp(0, h - 1) * w + x.clamp(0, w - 1)) as usize];
+    let data = (0..h * w)
+        .into_par_iter()
+        .map(|i| {
+            let (x, y) = (i % w, i / w);
+            let gx = at(x + 1, y - 1) + 2.0 * at(x + 1, y) + at(x + 1, y + 1)
+                - at(x - 1, y - 1)
+                - 2.0 * at(x - 1, y)
+                - at(x - 1, y + 1);
+            let gy = at(x - 1, y + 1) + 2.0 * at(x, y + 1) + at(x + 1, y + 1)
+                - at(x - 1, y - 1)
+                - 2.0 * at(x, y - 1)
+                - at(x + 1, y - 1);
+            ((gx * gx + gy * gy).sqrt() / 4.0).min(255.0) as u8
+        })
+        .collect();
+    Mask::from_raw(img.width(), img.height(), data)
+}
+
+/// Move `p` to the strongest edge within `radius`, preferring nearer pixels on ties.
+pub fn snap_to_edge(edges: &Mask, p: (f32, f32), radius: i32) -> (f32, f32) {
+    let (cx, cy) = (p.0.round() as i32, p.1.round() as i32);
+    let mut best = (0.0f32, p);
+    for dy in -radius..=radius {
+        for dx in -radius..=radius {
+            let d2 = (dx * dx + dy * dy) as f32;
+            if d2 > (radius * radius) as f32 {
+                continue;
+            }
+            let e = edges.get_or_zero(cx + dx, cy + dy) as f32;
+            // Distance penalty keeps the path from jumping to far edges.
+            let score = e - d2.sqrt() * 3.0;
+            if score > best.0 {
+                best = (score, ((cx + dx) as f32 + 0.5, (cy + dy) as f32 + 0.5));
+            }
+        }
+    }
+    best.1
+}
+
 /// Keep only the largest 4-connected region.
 pub fn largest_component(m: &Mask) -> Mask {
     let (w, h) = (m.width() as usize, m.height() as usize);
@@ -431,6 +476,19 @@ mod tests {
         let segs = outline_segments(&m);
         let len: i32 = segs.iter().map(|(a, b)| (b.0 - a.0).abs() + (b.1 - a.1).abs()).sum();
         assert_eq!(len, 12);
+    }
+
+    #[test]
+    fn magnetic_snap_finds_edge() {
+        let mut img = Image::filled(40, 40, Rgba::WHITE);
+        for y in 0..40 {
+            for x in 20..40 {
+                img.put(x, y, Rgba::BLACK);
+            }
+        }
+        let e = edge_map(&img);
+        let p = snap_to_edge(&e, (15.0, 10.0), 8);
+        assert!((p.0 - 20.0).abs() <= 1.5, "{p:?}");
     }
 
     #[test]

@@ -15,6 +15,7 @@ pub enum Tool {
     EllipseMarquee,
     Lasso,
     PolyLasso,
+    MagneticLasso,
     QuickSelect,
     ObjectSelect,
     MagicWand,
@@ -64,7 +65,7 @@ pub enum Tool {
 pub const GROUPS: &[&[Tool]] = &[
     &[Tool::Move],
     &[Tool::RectMarquee, Tool::EllipseMarquee],
-    &[Tool::Lasso, Tool::PolyLasso],
+    &[Tool::Lasso, Tool::PolyLasso, Tool::MagneticLasso],
     &[Tool::ObjectSelect, Tool::QuickSelect, Tool::MagicWand],
     &[Tool::Crop],
     &[Tool::Eyedropper, Tool::Ruler],
@@ -103,6 +104,7 @@ impl Tool {
             Self::EllipseMarquee => "Elliptical Marquee",
             Self::Lasso => "Lasso",
             Self::PolyLasso => "Polygonal Lasso",
+            Self::MagneticLasso => "Magnetic Lasso",
             Self::QuickSelect => "Quick Selection",
             Self::ObjectSelect => "Object Selection",
             Self::MagicWand => "Magic Wand",
@@ -156,6 +158,7 @@ impl Tool {
             Self::EllipseMarquee => ph::CIRCLE_DASHED,
             Self::Lasso => ph::LASSO,
             Self::PolyLasso => ph::POLYGON,
+            Self::MagneticLasso => ph::MAGNET,
             Self::QuickSelect => ph::SPARKLE,
             Self::ObjectSelect => ph::USER_FOCUS,
             Self::MagicWand => ph::MAGIC_WAND,
@@ -207,7 +210,7 @@ impl Tool {
         Some(match self {
             Self::Move => Key::V,
             Self::RectMarquee | Self::EllipseMarquee => Key::M,
-            Self::Lasso | Self::PolyLasso => Key::L,
+            Self::Lasso | Self::PolyLasso | Self::MagneticLasso => Key::L,
             Self::QuickSelect | Self::MagicWand | Self::ObjectSelect => Key::W,
             Self::Crop => Key::C,
             Self::Eyedropper | Self::Ruler => Key::I,
@@ -290,6 +293,7 @@ impl Tool {
                 "Drag to select · Shift adds, Alt subtracts · hold Shift after starting for a square"
             }
             Self::Lasso => "Drag a freehand outline",
+            Self::MagneticLasso => "Trace roughly along an edge; the outline snaps to it",
             Self::PolyLasso => "Click to add points · double-click or click the start to close · Esc cancels",
             Self::QuickSelect => "Paint over the area to select · Alt to subtract",
             Self::ObjectSelect => "Drag a box around an object to select it · Shift adds, Alt subtracts",

@@ -491,7 +491,7 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 segmented(ui, &mut o.sponge_saturate, &[(false, "Desaturate"), (true, "Saturate")]);
                 pct(ui, "Flow", &mut o.flow);
             }
-            Tool::RectMarquee | Tool::EllipseMarquee | Tool::Lasso | Tool::PolyLasso => {
+            Tool::RectMarquee | Tool::EllipseMarquee | Tool::Lasso | Tool::PolyLasso | Tool::MagneticLasso => {
                 select_ops(ui, &mut o.select_op);
                 label_dim(ui, "Feather");
                 ui.add(egui::DragValue::new(&mut o.feather).range(0.0..=250.0).suffix(" px"));

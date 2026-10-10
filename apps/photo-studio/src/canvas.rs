@@ -42,6 +42,7 @@ impl CropBox {
 enum Drag {
     Marquee { start: (f32, f32), cur: (f32, f32), op: SelectOp, ellipse: bool, constrain: bool },
     Lasso { points: Vec<(f32, f32)>, op: SelectOp },
+    Magnetic { points: Vec<(f32, f32)>, op: SelectOp, edges: studio_core::Mask },
     Move { start: (f32, f32), base: DocState, applied: (i32, i32) },
     Pan { start_pan: Vec2, start: Pos2 },
     Gradient { start: (f32, f32), cur: (f32, f32) },
@@ -701,6 +702,24 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                 if resp.drag_stopped() {
                     let Some(Drag::Lasso { points, op }) = app.cv.drag.take() else { unreachable!() };
                     finish_polygon(app, &points, op, "Lasso");
+                }
+            }
+        }
+        Tool::MagneticLasso => {
+            if primary_pressed && resp.drag_started() {
+                let edges = select::edge_map(&app.docs[active].composite);
+                let start = select::snap_to_edge(&edges, origin, 10);
+                app.cv.drag =
+                    Some(Drag::Magnetic { points: vec![start], op: select_op(mods, app.opts.select_op), edges });
+            }
+            if let Some(Drag::Magnetic { points, edges, .. }) = &mut app.cv.drag {
+                if points.last().is_none_or(|l| (l.0 - p.0).hypot(l.1 - p.1) * view.zoom > 4.0) {
+                    let radius = (12.0 / view.zoom).clamp(3.0, 30.0) as i32;
+                    points.push(select::snap_to_edge(edges, p, radius));
+                }
+                if resp.drag_stopped() {
+                    let Some(Drag::Magnetic { points, op, .. }) = app.cv.drag.take() else { unreachable!() };
+                    finish_polygon(app, &points, op, "Magnetic Lasso");
                 }
             }
         }
@@ -1756,6 +1775,18 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
             let pts: Vec<Pos2> = points.iter().map(|p| view.to_screen(*p)).collect();
             let width = (app.opts.tip.size * view.zoom).max(2.0);
             painter.add(Shape::line(pts, Stroke::new(width, Color32::from_rgba_unmultiplied(255, 45, 85, 110))));
+        }
+        Some(Drag::Magnetic { points, .. }) => {
+            let pts: Vec<Pos2> = points.iter().map(|p| view.to_screen(*p)).collect();
+            dash(&pts, false);
+            for q in pts.iter().step_by(4) {
+                painter.rect_stroke(
+                    ERect::from_center_size(*q, Vec2::splat(4.0)),
+                    0.0,
+                    Stroke::new(1.0, Color32::WHITE),
+                    egui::StrokeKind::Middle,
+                );
+            }
         }
         Some(Drag::Lasso { points, .. }) => {
             let pts: Vec<Pos2> = points.iter().map(|p| view.to_screen(*p)).collect();

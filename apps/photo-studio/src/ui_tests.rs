@@ -852,3 +852,47 @@ fn liquify_pushes_pixels() {
     assert_eq!(l.pixels.get(215, 20), Rgba::WHITE, "outside the brush unchanged");
     assert_eq!(h.state().tab().unwrap().history.undo_label(), Some("Liquify"));
 }
+
+#[test]
+fn magnetic_lasso_snaps_to_edges() {
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        for y in 100..200 {
+            for x in 150..250 {
+                tab.doc.layers[0].pixels.put(x, y, Rgba::BLACK);
+            }
+        }
+        tab.commit("square");
+    }
+    h.run_steps(2);
+    h.state_mut().set_tool(Tool::MagneticLasso);
+    // Trace a loose loop ~5 px outside the square.
+    let pts = [(145.0, 95.0), (255.0, 95.0), (255.0, 205.0), (145.0, 205.0), (145.0, 97.0)];
+    let (o, z) = (screen(&h, 0.0, 0.0), h.state().tab().unwrap().zoom);
+    let to = move |q: (f32, f32)| o + egui::vec2(q.0, q.1) * z;
+    let a = to(pts[0]);
+    h.event(Event::PointerMoved(a));
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    for w in pts.windows(2) {
+        for i in 1..=12 {
+            let t = i as f32 / 12.0;
+            let q = (w[0].0 + (w[1].0 - w[0].0) * t, w[0].1 + (w[1].1 - w[0].1) * t);
+            h.event(Event::PointerMoved(to(q)));
+            h.run_steps(1);
+        }
+    }
+    let end = to(*pts.last().unwrap());
+    h.event(Event::PointerButton {
+        pos: end,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    h.run_steps(2);
+    let b = h.state().tab().unwrap().doc.selection.as_ref().and_then(|m| m.bounds()).expect("selection");
+    assert!((b.x - 150).abs() <= 3 && (b.right() - 250).abs() <= 3, "snapped horizontally: {b:?}");
+    assert!((b.y - 100).abs() <= 3 && (b.bottom() - 200).abs() <= 3, "snapped vertically: {b:?}");
+}
