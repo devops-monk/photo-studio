@@ -164,6 +164,11 @@ fn handle_input(app: &mut App, ctx: &egui::Context, actions: &mut Vec<Action>) {
             app.cv.crop = None;
             app.cv.poly.clear();
             app.cv.pen = None;
+            if app.tool == Tool::RotateView {
+                if let Some(t) = app.tab_mut() {
+                    t.rotation = 0.0;
+                }
+            }
         }
     }
     // Command shortcuts (work even while typing when they use ⌘/Ctrl).
@@ -216,6 +221,9 @@ fn handle_input(app: &mut App, ctx: &egui::Context, actions: &mut Vec<Action>) {
                 cur
             };
             app.set_tool(next);
+        } else if let Some(t) = GROUPS.iter().flat_map(|g| g.iter()).find(|t| t.key() == Some(key)) {
+            // A tool with its own key inside a group (Rotate View in the Hand group).
+            app.set_tool(*t);
         }
         if app.tool == Tool::Move && app.docs.get(app.active).is_some() {
             let step = if m.shift { 10 } else { 1 };
@@ -754,6 +762,15 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     label_dim(ui, "Drag along something that should be level");
                 }
             },
+            Tool::RotateView => {
+                if let Some(tab) = app.tab_mut() {
+                    label_dim(ui, "Angle");
+                    ui.add(egui::DragValue::new(&mut tab.rotation).range(-180.0..=180.0).suffix("°").speed(1.0));
+                    if ui.button("Reset View").clicked() {
+                        tab.rotation = 0.0;
+                    }
+                }
+            }
             Tool::Hand | Tool::Zoom => {
                 if ui.button("Fit on Screen").clicked() {
                     actions.push(Action::FitOnScreen);

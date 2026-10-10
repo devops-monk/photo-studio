@@ -60,6 +60,7 @@ pub enum Tool {
     Checkmark,
     Line,
     Hand,
+    RotateView,
     Zoom,
 }
 
@@ -94,7 +95,7 @@ pub const GROUPS: &[&[Tool]] = &[
         Tool::SpeechBubble,
         Tool::Checkmark,
     ],
-    &[Tool::Hand],
+    &[Tool::Hand, Tool::RotateView],
     &[Tool::Zoom],
 ];
 
@@ -151,6 +152,7 @@ impl Tool {
             Self::Star => "Star",
             Self::Line => "Line",
             Self::Hand => "Hand",
+            Self::RotateView => "Rotate View",
             Self::Zoom => "Zoom",
         }
     }
@@ -206,6 +208,7 @@ impl Tool {
             Self::Star => ph::STAR,
             Self::Line => ph::LINE_SEGMENT,
             Self::Hand => ph::HAND,
+            Self::RotateView => ph::ARROWS_CLOCKWISE,
             Self::Zoom => ph::MAGNIFYING_GLASS,
         }
     }
@@ -214,6 +217,8 @@ impl Tool {
     pub fn key(&self) -> Option<egui::Key> {
         use egui::Key;
         Some(match self {
+            // Like other editors, the blur/smudge group has no single-key shortcut.
+            Self::Blur | Self::Sharpen | Self::Smudge | Self::Liquify => return None,
             Self::Move => Key::V,
             Self::RectMarquee | Self::EllipseMarquee => Key::M,
             Self::Lasso | Self::PolyLasso | Self::MagneticLasso => Key::L,
@@ -226,7 +231,7 @@ impl Tool {
             Self::HistoryBrush => Key::Y,
             Self::Eraser | Self::BackgroundEraser | Self::MagicEraser => Key::E,
             Self::Gradient | Self::Bucket => Key::G,
-            Self::Blur | Self::Sharpen | Self::Smudge | Self::Liquify => Key::R,
+            Self::RotateView => Key::R,
             Self::Dodge | Self::Burn | Self::Sponge => Key::O,
             Self::Text => Key::T,
             Self::Pen => Key::P,
@@ -339,6 +344,7 @@ impl Tool {
             | Self::SpeechBubble
             | Self::Checkmark => "Drag to draw a shape layer · Shift constrains",
             Self::Hand => "Drag to pan · double-click to fit",
+            Self::RotateView => "Drag to turn the view · Shift snaps to 15° · double-click or Esc resets",
             Self::Zoom => "Click to zoom in · Alt-click to zoom out",
         }
     }

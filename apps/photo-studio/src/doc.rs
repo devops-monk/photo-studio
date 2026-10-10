@@ -28,6 +28,8 @@ pub struct DocTab {
     pub zoom: f32,
     /// Offset of the image centre from the viewport centre, in screen points.
     pub pan: egui::Vec2,
+    /// View rotation in degrees (Rotate View); the document itself is unchanged.
+    pub rotation: f32,
     pub fit_pending: bool,
     compositor: Compositor,
     /// Full-resolution composite (kept for the eyedropper, navigator and histogram).
@@ -58,6 +60,7 @@ impl DocTab {
             saved_revision: 0,
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
+            rotation: 0.0,
             fit_pending: true,
             compositor: Compositor::new(),
             composite_gen: 0,
@@ -183,12 +186,21 @@ impl DocTab {
     }
 
     /// Draw the image tiles into `screen` (the image's on-screen rect).
-    pub fn paint(&self, painter: &egui::Painter, origin: egui::Pos2) {
+    /// Draw the tiles with the image's top-left at `origin`, rotated about `pivot`.
+    pub fn paint(&self, painter: &egui::Painter, origin: egui::Pos2, pivot: egui::Pos2) {
         let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+        let rot = egui::emath::Rot2::from_angle(self.rotation.to_radians());
         for t in &self.tiles {
             let min = origin + egui::vec2(t.rect.x as f32, t.rect.y as f32) * self.zoom;
             let r = egui::Rect::from_min_size(min, egui::vec2(t.rect.w as f32, t.rect.h as f32) * self.zoom);
-            painter.image(t.tex.id(), r, uv, egui::Color32::WHITE);
+            if self.rotation == 0.0 {
+                painter.image(t.tex.id(), r, uv, egui::Color32::WHITE);
+            } else {
+                let mut mesh = egui::Mesh::with_texture(t.tex.id());
+                mesh.add_rect_with_uv(r, uv, egui::Color32::WHITE);
+                mesh.rotate(rot, pivot);
+                painter.add(egui::Shape::mesh(mesh));
+            }
         }
     }
 

@@ -188,6 +188,8 @@ pub struct CanvasState {
     pub pen: Option<studio_core::path::BezierPath>,
     /// Direct Selection drag: (path index, anchor index, which point: 0 anchor, 1 in, 2 out).
     direct: Option<(usize, usize, u8)>,
+    /// Rotate View drag: (start pointer angle, start rotation in degrees).
+    rotate_drag: Option<(f32, f32)>,
     last_paint: Option<(f32, f32)>,
 }
 
@@ -207,6 +209,7 @@ impl Default for CanvasState {
             guide_drag: None,
             pen: None,
             direct: None,
+            rotate_drag: None,
             last_paint: None,
         }
     }
@@ -215,14 +218,27 @@ impl Default for CanvasState {
 struct View {
     origin: Pos2,
     zoom: f32,
+    /// Rotate View: radians, about `pivot` (the viewport centre).
+    rot: f32,
+    pivot: Pos2,
 }
 
 impl View {
     fn to_canvas(&self, p: Pos2) -> (f32, f32) {
+        let p =
+            if self.rot == 0.0 { p } else { self.pivot + egui::emath::Rot2::from_angle(-self.rot) * (p - self.pivot) };
         ((p.x - self.origin.x) / self.zoom, (p.y - self.origin.y) / self.zoom)
     }
     fn to_screen(&self, p: (f32, f32)) -> Pos2 {
-        Pos2::new(self.origin.x + p.0 * self.zoom, self.origin.y + p.1 * self.zoom)
+        let s = Pos2::new(self.origin.x + p.0 * self.zoom, self.origin.y + p.1 * self.zoom);
+        if self.rot == 0.0 { s } else { self.pivot + egui::emath::Rot2::from_angle(self.rot) * (s - self.pivot) }
+    }
+    fn rotated(&self) -> bool {
+        self.rot != 0.0
+    }
+    /// Screen polygon of a canvas rectangle.
+    fn quad(&self, a: (f32, f32), b: (f32, f32)) -> Vec<Pos2> {
+        vec![self.to_screen(a), self.to_screen((b.0, a.1)), self.to_screen(b), self.to_screen((a.0, b.1))]
     }
 }
 
@@ -275,18 +291,33 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     let (dw, dh) = (tab.doc.width as f32, tab.doc.height as f32);
     let zoom = tab.zoom;
     let origin = view_rect.center() + tab.pan - Vec2::new(dw, dh) * zoom / 2.0;
-    let view = View { origin, zoom };
+    let view = View { origin, zoom, rot: tab.rotation.to_radians(), pivot: view_rect.center() };
     let img_rect = ERect::from_min_size(origin, Vec2::new(dw, dh) * zoom);
 
     // ---- draw document ----
-    painter.rect_filled(
-        img_rect.translate(Vec2::new(0.0, 6.0)).expand(2.0),
-        4.0,
-        Color32::from_black_alpha(if t.dark { 70 } else { 30 }),
-    );
-    crate::widgets::checker(&painter, img_rect, 8.0);
-    tab.paint(&painter, origin);
-    if app.prefs.pixel_grid && zoom >= 10.0 {
+    if view.rotated() {
+        let quad = view.quad((0.0, 0.0), (dw, dh));
+        let shadow: Vec<Pos2> = quad.iter().map(|p| *p + Vec2::new(0.0, 6.0)).collect();
+        painter.add(Shape::convex_polygon(
+            shadow,
+            Color32::from_black_alpha(if t.dark { 70 } else { 30 }),
+            Stroke::NONE,
+        ));
+        painter.add(Shape::convex_polygon(
+            quad,
+            if t.dark { Color32::from_gray(62) } else { Color32::from_gray(236) },
+            Stroke::NONE,
+        ));
+    } else {
+        painter.rect_filled(
+            img_rect.translate(Vec2::new(0.0, 6.0)).expand(2.0),
+            4.0,
+            Color32::from_black_alpha(if t.dark { 70 } else { 30 }),
+        );
+        crate::widgets::checker(&painter, img_rect, 8.0);
+    }
+    tab.paint(&painter, origin, view.pivot);
+    if app.prefs.pixel_grid && zoom >= 10.0 && !view.rotated() {
         let vis = img_rect.intersect(view_rect);
         let (cx0, cy0) = view.to_canvas(vis.min);
         let (cx1, cy1) = view.to_canvas(vis.max);
@@ -317,7 +348,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     }
 
     // ---- grid and guides ----
-    if app.prefs.show_grid {
+    if app.prefs.show_grid && !view.rotated() {
         draw_grid(app, &painter, &view, img_rect);
     }
     let guide_busy = guides(app, ui, &resp, &view, full, ruler_w);
@@ -1322,6 +1353,27 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                 }
             }
         }
+        Tool::RotateView => {
+            let pivot = view.pivot;
+            if primary_pressed && resp.drag_started() {
+                let o = ctx.input(|i| i.pointer.press_origin()).unwrap_or(pos);
+                app.cv.rotate_drag = Some(((o - pivot).angle(), app.docs[active].rotation));
+            }
+            if let Some((a0, r0)) = app.cv.rotate_drag {
+                let mut deg = r0 + ((pos - pivot).angle() - a0).to_degrees();
+                if mods.shift {
+                    deg = (deg / 15.0).round() * 15.0;
+                }
+                app.docs[active].rotation = (deg + 540.0).rem_euclid(360.0) - 180.0;
+                if resp.drag_stopped() {
+                    app.cv.rotate_drag = None;
+                }
+            }
+            if resp.double_clicked() {
+                app.docs[active].rotation = 0.0;
+            }
+            ctx.set_cursor_icon(CursorIcon::Grab);
+        }
         Tool::Zoom => {
             if resp.clicked() {
                 let center = app.cv.view_rect.center();
@@ -1412,14 +1464,20 @@ fn guides(app: &mut App, ui: &mut Ui, resp: &egui::Response, view: &View, full: 
         }
         p.hline(full.x_range(), view_rect.top() - 0.5, Stroke::new(1.0, t.separator));
         p.vline(view_rect.left() - 0.5, full.y_range(), Stroke::new(1.0, t.separator));
-        let steps = [1.0f32, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0];
-        let major = steps.iter().copied().find(|s| s * view.zoom >= 60.0).unwrap_or(10000.0);
+        // On a rotated view the rulers can't show canvas units along the screen axes.
+        let steps: &[f32] = if view.rotated() {
+            &[]
+        } else {
+            &[1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0]
+        };
+        let major = steps.iter().copied().find(|s| s * view.zoom >= 60.0).unwrap_or(f32::INFINITY);
         let minor = major / if (major / 5.0).fract() == 0.0 && major >= 5.0 { 5.0 } else { 2.0 };
         let font = egui::FontId::proportional(9.5);
         let tick = Stroke::new(1.0, t.text_faint);
         let (cx0, _) = view.to_canvas(top.left_top());
         let (cx1, _) = view.to_canvas(top.right_top());
-        let mut x = (cx0 / minor).floor() * minor;
+        // No ticks when rotated: start past the end so the loop is skipped.
+        let mut x = if major.is_finite() { (cx0 / minor).floor() * minor } else { f32::INFINITY };
         while x <= cx1 {
             let sx = view.to_screen((x, 0.0)).x;
             let is_major = (x / major).round() * major == x;
@@ -1438,7 +1496,7 @@ fn guides(app: &mut App, ui: &mut Ui, resp: &egui::Response, view: &View, full: 
         }
         let (_, cy0) = view.to_canvas(left.left_top());
         let (_, cy1) = view.to_canvas(left.left_bottom());
-        let mut y = (cy0 / minor).floor() * minor;
+        let mut y = if major.is_finite() { (cy0 / minor).floor() * minor } else { f32::INFINITY };
         while y <= cy1 {
             let sy = view.to_screen((0.0, y)).y;
             let is_major = (y / major).round() * major == y;
@@ -1484,11 +1542,9 @@ fn guides(app: &mut App, ui: &mut Ui, resp: &egui::Response, view: &View, full: 
             if app.cv.guide_drag.is_some_and(|(_, idx, _)| idx == Some(i)) {
                 continue;
             }
-            if g.horizontal {
-                painter.hline(view_rect.x_range(), view.to_screen((0.0, g.pos)).y, Stroke::new(1.0, guide_col));
-            } else {
-                painter.vline(view.to_screen((g.pos, 0.0)).x, view_rect.y_range(), Stroke::new(1.0, guide_col));
-            }
+            let far = 1.0e6;
+            let (a, b) = if g.horizontal { ((-far, g.pos), (far, g.pos)) } else { ((g.pos, -far), (g.pos, far)) };
+            painter.line_segment([view.to_screen(a), view.to_screen(b)], Stroke::new(1.0, guide_col));
         }
     }
     if show && app.cv.guide_drag.is_none() && app.tool == Tool::Move && app.cv.transform.is_none() {
@@ -1835,15 +1891,17 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
         Some(Drag::Marquee { start, cur, ellipse, .. }) => {
             let r = ERect::from_two_pos(view.to_screen(*start), view.to_screen(*cur));
             if *ellipse {
+                let (cx, cy) = ((start.0 + cur.0) / 2.0, (start.1 + cur.1) / 2.0);
+                let (rx, ry) = ((cur.0 - start.0).abs() / 2.0, (cur.1 - start.1).abs() / 2.0);
                 let pts: Vec<Pos2> = (0..64)
                     .map(|i| {
                         let a = i as f32 / 64.0 * std::f32::consts::TAU;
-                        r.center() + Vec2::new(a.cos() * r.width() / 2.0, a.sin() * r.height() / 2.0)
+                        view.to_screen((cx + a.cos() * rx, cy + a.sin() * ry))
                     })
                     .collect();
                 dash(&pts, true);
             } else {
-                dash(&[r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom()], true);
+                dash(&view.quad(*start, *cur), true);
             }
             let (w, h) = ((cur.0 - start.0).abs().round(), (cur.1 - start.1).abs().round());
             painter.text(
@@ -1857,11 +1915,10 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
         Some(Drag::Patch { start, cur }) => {
             if let Some(b) = app.tab().and_then(|t| t.doc.selection.as_ref()).and_then(|m| m.bounds()) {
                 let (dx, dy) = (cur.0 - start.0, cur.1 - start.1);
-                let r = ERect::from_two_pos(
-                    view.to_screen((b.x as f32 + dx, b.y as f32 + dy)),
-                    view.to_screen((b.right() as f32 + dx, b.bottom() as f32 + dy)),
+                dash(
+                    &view.quad((b.x as f32 + dx, b.y as f32 + dy), (b.right() as f32 + dx, b.bottom() as f32 + dy)),
+                    true,
                 );
-                dash(&[r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom()], true);
             }
         }
         Some(Drag::Remove { points }) => {
@@ -1902,7 +1959,15 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
         dash(&pts, false);
         painter.circle_stroke(view.to_screen(app.cv.poly[0]), 5.0, Stroke::new(1.5, t.accent));
     }
-    if let Some(cb) = &app.cv.crop {
+    if let (Some(cb), true) = (&app.cv.crop, view.rotated()) {
+        // Rotated view: outline and handles only.
+        let (x0, y0, x1, y1) = cb.rect();
+        let q = view.quad((x0, y0), (x1, y1));
+        painter.add(Shape::closed_line(q.clone(), Stroke::new(1.5, Color32::WHITE)));
+        for c in q {
+            painter.rect_filled(ERect::from_center_size(c, Vec2::splat(8.0)), 2.0, Color32::WHITE);
+        }
+    } else if let Some(cb) = &app.cv.crop {
         let (x0, y0, x1, y1) = cb.rect();
         let r = ERect::from_two_pos(view.to_screen((x0, y0)), view.to_screen((x1, y1)));
         let clip = painter.clip_rect();

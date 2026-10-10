@@ -484,6 +484,7 @@ fn screenshots() {
         ("light", "1", "light"),
         ("guides", "guides", "dark"),
         ("palette", "palette", "dark"),
+        ("rotated", "rotated", "dark"),
     ] {
         let mut h = Harness::builder()
             .with_size(egui::vec2(1440.0, 900.0))
@@ -502,6 +503,9 @@ fn screenshots() {
             let tab = app.tab_mut().unwrap();
             tab.doc.guides.push(studio_core::document::Guide { horizontal: true, pos: 300.0 });
             tab.doc.guides.push(studio_core::document::Guide { horizontal: false, pos: 640.0 });
+        }
+        if variant == "rotated" {
+            h.state_mut().tab_mut().unwrap().rotation = -20.0;
         }
         if variant == "palette" {
             h.state_mut().dialog = Some(crate::dialogs::Dialog::CommandPalette { query: "blur".into(), selected: 0 });
@@ -962,4 +966,25 @@ fn pattern_fill_fill_opacity_and_labels_round_trip() {
     assert_eq!(b.kind, tab.doc.layers.last().unwrap().kind);
     assert_eq!((b.fill_opacity, b.label), (0.4, Some(3)));
     assert_eq!(back.composite(), tab.doc.composite());
+}
+
+#[test]
+fn rotate_view_keeps_painting_accurate() {
+    let mut h = harness();
+    h.key_press(Key::R);
+    h.run_steps(1);
+    assert_eq!(h.state().tool, Tool::RotateView);
+    h.state_mut().tab_mut().unwrap().rotation = 90.0;
+    h.run_steps(2);
+    // Map canvas → screen with the same rotation the view uses.
+    let pivot = h.state().cv.view_rect.center();
+    let rot = egui::emath::Rot2::from_angle(90f32.to_radians());
+    let s = |h: &Harness<'static, App>, x: f32, y: f32| pivot + rot * (screen(h, x, y) - pivot);
+    h.state_mut().set_tool(Tool::Brush);
+    h.state_mut().fg = Rgba::rgb(255, 0, 0);
+    let (a, b) = (s(&h, 100.0, 150.0), s(&h, 300.0, 150.0));
+    raw_drag(&mut h, a, b);
+    let l = &h.state().tab().unwrap().doc.layers[0];
+    assert_eq!(l.pixels.get(200, 150), Rgba::rgb(255, 0, 0), "painted along the canvas line");
+    assert_eq!(l.pixels.get(150, 200), Rgba::WHITE, "not along the screen line");
 }
