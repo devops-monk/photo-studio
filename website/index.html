@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo Studio — Layers, masks and filters. Native on every desktop.</title>
+  <meta name="description" content="Photo Studio is a fast, native, layer-based photo editor for macOS, Windows and Linux. Adjustment layers, masks, layer styles, selections, brushes, type, 30 filters and PSD support. Free and open source.">
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <meta property="og:title" content="Photo Studio">
+  <meta property="og:description" content="A fast, native, layer-based photo editor for macOS, Windows and Linux.">
+  <meta property="og:image" content="https://photo-studio.devops-monk.com/assets/shots/demo.jpg">
+  <meta property="og:url" content="https://photo-studio.devops-monk.com/">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="nav" id="nav">
+    <div class="nav-inner">
+      <a class="brand" href="#top"><img src="assets/logo.svg" alt="" width="22" height="22"><span>Photo Studio</span></a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#tools">Tools</a>
+        <a href="#cli">CLI</a>
+        <a href="https://github.com/devops-monk/photo-studio">GitHub</a>
+        <a class="pill" href="#download">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero" id="top">
+    <div class="glow" aria-hidden="true"></div>
+    <img class="hero-logo" src="assets/logo-animated.svg" width="168" height="168" alt="Photo Studio logo: a six-blade camera iris">
+    <p class="eyebrow">Free · Open source · macOS, Windows &amp; Linux</p>
+    <h1>Photo Studio.<br><span class="grad">Edit without limits.</span></h1>
+    <p class="lead">Layers, masks, adjustment layers, layer styles, smart selections and 30 filters, in a native app that opens in an instant and works offline.</p>
+    <div class="cta">
+      <a class="btn primary" href="#download" id="hero-download">Download</a>
+      <a class="btn link" href="#features">Explore features ›</a>
+    </div>
+    <figure class="hero-shot reveal">
+      <img src="assets/shots/demo.jpg" width="1600" height="1000" alt="Photo Studio editing Hokusai's Great Wave: a Twirl filter previewing inside an elliptical selection, a type layer with drop shadow and stroke, and the Layers panel" loading="eager">
+    </figure>
+    <p class="caption"><em>The Great Wave off Kanagawa</em>, Katsushika Hokusai, c. 1831. Public domain.</p>
+  </header>
+
+  <section class="stats reveal">
+    <div><b>32</b><span>tools</span></div>
+    <div><b>27</b><span>blend modes</span></div>
+    <div><b>16</b><span>adjustments</span></div>
+    <div><b>30</b><span>filters</span></div>
+    <div><b>12</b><span>file formats</span></div>
+  </section>
+
+  <section class="feature" id="features">
+    <div class="copy reveal">
+      <p class="eyebrow">Non-destructive</p>
+      <h2>Edit without regret.</h2>
+      <p>Stack Curves, Levels, Hue/Saturation, Color Balance, Black &amp; White, Gradient Map and ten more as live adjustment layers. Mask them, reorder them, switch them off. Your original pixels never change.</p>
+    </div>
+    <figure class="reveal"><img src="assets/shots/light.jpg" width="1600" height="1000" loading="lazy" alt="Light theme with The Starry Night, a type layer, a shape layer and a Curves adjustment layer"></figure>
+  </section>
+
+  <section class="feature alt">
+    <div class="copy reveal">
+      <p class="eyebrow">Live preview</p>
+      <h2>See it before you commit.</h2>
+      <p>Every filter and adjustment previews right on the canvas, limited to your selection. Blur, sharpen, denoise, twirl, ripple, oil paint, halftone, vignette, lens flare and more.</p>
+    </div>
+    <figure class="reveal"><img src="assets/shots/doc.jpg" width="1600" height="1000" loading="lazy" alt="The Great Wave open in Photo Studio's dark theme"></figure>
+  </section>
+
+  <section class="grid-features">
+    <article class="card reveal"><div class="ico">◎</div><h3>Selections that think</h3><p>Marquee, lasso, magic wand, quick selection, Color Range and Select Subject. Feather, expand, contract, border and smooth.</p></article>
+    <article class="card reveal"><div class="ico">✦</div><h3>Layer styles</h3><p>Drop and inner shadow, outer and inner glow, stroke and color overlay, live on any layer, including type.</p></article>
+    <article class="card reveal"><div class="ico">✎</div><h3>Paint &amp; retouch</h3><p>Brush, pencil, clone stamp, healing and spot healing, smudge, dodge, burn and sponge, with pressure support.</p></article>
+    <article class="card reveal"><div class="ico">T</div><h3>Type &amp; shapes</h3><p>Editable text with bundled fonts. Rectangles, rounded rectangles, ellipses, polygons, stars and lines as shape layers.</p></article>
+    <article class="card reveal"><div class="ico">⇄</div><h3>Real PSD files</h3><p>Open layered Photoshop documents and save them back. Projects save losslessly as <code>.pstudio</code>.</p></article>
+    <article class="card reveal"><div class="ico">↺</div><h3>Unlimited undo</h3><p>A visual History panel lets you jump to any step. Copy-on-write layers keep it light on memory.</p></article>
+  </section>
+
+  <section class="tools" id="tools">
+    <div class="copy reveal center">
+      <p class="eyebrow">Familiar by design</p>
+      <h2>The tools you already know.</h2>
+      <p>Shortcuts where your hands expect them: V, M, L, W, C, I, J, B, S, E, G, T, U, H, Z, plus ⌘J, ⌘E, ⌘T and ⇧⌘I.</p>
+    </div>
+    <figure class="reveal wide"><img src="assets/shots/icons2.jpg" width="1600" height="1000" loading="lazy" alt="Options bars for the painting, toning, type and shape tools"></figure>
+  </section>
+
+  <section class="cli" id="cli">
+    <div class="copy reveal">
+      <p class="eyebrow">For automation</p>
+      <h2>A command line, too.</h2>
+      <p>The same engine runs headless. Batch-resize a folder, auto-tone a shoot or sharpen for the web in one line.</p>
+    </div>
+    <pre class="term reveal"><code><span class="p">$</span> photo-studio-cli photo.jpg --adjust autotone --filter unsharp=80,1.5 -o out.jpg
+<span class="p">$</span> photo-studio-cli batch ./shoot --out-dir ./web --format webp --resize 1600
+<span class="ok">✓</span> IMG_0412.jpg → web/IMG_0412.webp
+<span class="ok">✓</span> IMG_0413.jpg → web/IMG_0413.webp
+48 of 48 done</code></pre>
+  </section>
+
+  <section class="download" id="download">
+    <img src="assets/logo.svg" width="96" height="96" alt="">
+    <h2>Download Photo Studio</h2>
+    <p class="muted" id="version-line">Free and open source under the MIT license.</p>
+    <div class="platforms">
+      <a class="platform" data-os="mac" href="https://github.com/devops-monk/photo-studio/releases/latest">
+        <span class="os"></span><b>macOS</b><span class="muted">Apple Silicon &amp; Intel · .dmg</span>
+      </a>
+      <a class="platform" data-os="win" href="https://github.com/devops-monk/photo-studio/releases/latest">
+        <span class="os"></span><b>Windows</b><span class="muted">x64 &amp; ARM64 · .zip</span>
+      </a>
+      <a class="platform" data-os="linux" href="https://github.com/devops-monk/photo-studio/releases/latest">
+        <span class="os"></span><b>Linux</b><span class="muted">.deb · AppImage · .tar.gz</span>
+      </a>
+    </div>
+    <p class="muted small">On macOS, right-click the app and choose <b>Open</b> the first time. <a href="https://github.com/devops-monk/photo-studio/releases">All releases</a> · <a href="https://github.com/devops-monk/photo-studio">Source</a></p>
+  </section>
+
+  <footer>
+    <p>© 2026 Abhay Pratap Singh · MIT License · <a href="https://github.com/devops-monk/photo-studio">GitHub</a></p>
+  </footer>
+  <script src="site.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://photo-studio.devops-monk.com/sitemap.xml
