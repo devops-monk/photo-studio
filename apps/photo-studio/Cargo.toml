@@ -1,8 +1,49 @@
 [package]
 name = "photo-studio"
+description = "Photo Studio: a fast, layer-based photo editor for macOS, Windows and Linux"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 studio-core.workspace = true
+eframe = { version = "0.36", default-features = false, features = ["default_fonts", "wgpu", "glow", "persistence", "wayland", "x11", "accesskit"] }
+egui = "0.36"
+egui-phosphor = { version = "0.14", default-features = false, features = ["regular", "fill"] }
+rfd = "0.17"
+arboard = { version = "3", default-features = false, features = ["image-data"] }
+serde.workspace = true
+tiny-skia.workspace = true
+log = "0.4"
+env_logger = { version = "0.11", default-features = false }
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[package.metadata.deb]
+name = "photo-studio"
+maintainer = "Abhay Pratap Singh <abhaypratap3537@gmail.com>"
+copyright = "2026 Abhay Pratap Singh"
+section = "graphics"
+priority = "optional"
+extended-description = "Photo Studio is a layer-based photo editor with adjustment layers, masks, layer styles, selections, brushes, text, shapes, filters and PSD support."
+assets = [
+    ["target/release/photo-studio", "usr/bin/", "755"],
+    ["../../packaging/linux/photo-studio.desktop", "usr/share/applications/", "644"],
+    ["../../packaging/linux/photo-studio.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["../../packaging/icons/256.png", "usr/share/icons/hicolor/256x256/apps/photo-studio.png", "644"],
+    ["../../packaging/icons/512.png", "usr/share/icons/hicolor/512x512/apps/photo-studio.png", "644"],
+    ["../../packaging/icons/128.png", "usr/share/icons/hicolor/128x128/apps/photo-studio.png", "644"],
+    ["../../packaging/icons/64.png", "usr/share/icons/hicolor/64x64/apps/photo-studio.png", "644"],
+]
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+egui_kittest = { version = "0.36", features = ["eframe"] }

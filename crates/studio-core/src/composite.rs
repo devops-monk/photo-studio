@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 
-use crate::blend::{composite_pixel, pixel_noise, BlendMode};
+use crate::blend::{BlendMode, composite_pixel, pixel_noise};
 use crate::geom::Rect;
 use crate::image::Image;
 use crate::layer::{Layer, LayerId, LayerKind};
-use crate::styles::{render_passes, LayerStyles, Pass};
+use crate::styles::{LayerStyles, Pass, render_passes};
 
 #[derive(Clone, PartialEq)]
 struct StyleKey {

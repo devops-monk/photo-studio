@@ -7,7 +7,7 @@
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::color::{hsl_to_rgb, luma, rgb_to_hsl, to_u8, Rgba};
+use crate::color::{Rgba, hsl_to_rgb, luma, rgb_to_hsl, to_u8};
 use crate::gradient::Gradient;
 use crate::histogram::Histogram;
 use crate::image::{Image, Mask};
@@ -194,24 +194,76 @@ impl ColorRange {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Adjustment {
-    BrightnessContrast { brightness: f32, contrast: f32 },
-    Levels { master: LevelsChannel, red: LevelsChannel, green: LevelsChannel, blue: LevelsChannel },
-    Curves { master: Curve, red: Curve, green: Curve, blue: Curve },
-    Exposure { exposure: f32, offset: f32, gamma: f32 },
-    Vibrance { vibrance: f32, saturation: f32 },
-    HueSaturation { hue: f32, saturation: f32, lightness: f32, colorize: bool },
+    BrightnessContrast {
+        brightness: f32,
+        contrast: f32,
+    },
+    Levels {
+        master: LevelsChannel,
+        red: LevelsChannel,
+        green: LevelsChannel,
+        blue: LevelsChannel,
+    },
+    Curves {
+        master: Curve,
+        red: Curve,
+        green: Curve,
+        blue: Curve,
+    },
+    Exposure {
+        exposure: f32,
+        offset: f32,
+        gamma: f32,
+    },
+    Vibrance {
+        vibrance: f32,
+        saturation: f32,
+    },
+    HueSaturation {
+        hue: f32,
+        saturation: f32,
+        lightness: f32,
+        colorize: bool,
+    },
     /// Cyan–Red, Magenta–Green, Yellow–Blue shifts (-100..100) for each tonal range.
-    ColorBalance { shadows: [f32; 3], midtones: [f32; 3], highlights: [f32; 3], preserve_luminosity: bool },
+    ColorBalance {
+        shadows: [f32; 3],
+        midtones: [f32; 3],
+        highlights: [f32; 3],
+        preserve_luminosity: bool,
+    },
     /// Percent weights for reds, yellows, greens, cyans, blues, magentas.
-    BlackWhite { weights: [f32; 6], tint: Option<Rgba> },
-    PhotoFilter { color: Rgba, density: f32, preserve_luminosity: bool },
+    BlackWhite {
+        weights: [f32; 6],
+        tint: Option<Rgba>,
+    },
+    PhotoFilter {
+        color: Rgba,
+        density: f32,
+        preserve_luminosity: bool,
+    },
     /// Rows for the red, green and blue outputs: [from R, from G, from B, constant] in percent.
-    ChannelMixer { red: [f32; 4], green: [f32; 4], blue: [f32; 4], monochrome: bool },
-    SelectiveColor { ranges: Vec<(ColorRange, Cmyk)>, absolute: bool },
-    GradientMap { gradient: Gradient, reverse: bool },
+    ChannelMixer {
+        red: [f32; 4],
+        green: [f32; 4],
+        blue: [f32; 4],
+        monochrome: bool,
+    },
+    SelectiveColor {
+        ranges: Vec<(ColorRange, Cmyk)>,
+        absolute: bool,
+    },
+    GradientMap {
+        gradient: Gradient,
+        reverse: bool,
+    },
     Invert,
-    Posterize { levels: u8 },
-    Threshold { level: u8 },
+    Posterize {
+        levels: u8,
+    },
+    Threshold {
+        level: u8,
+    },
     Desaturate,
 }
 
@@ -247,11 +299,21 @@ impl Adjustment {
                 green: LevelsChannel::default(),
                 blue: LevelsChannel::default(),
             },
-            Self::Curves { master: Curve::default(), red: Curve::default(), green: Curve::default(), blue: Curve::default() },
+            Self::Curves {
+                master: Curve::default(),
+                red: Curve::default(),
+                green: Curve::default(),
+                blue: Curve::default(),
+            },
             Self::Exposure { exposure: 0.0, offset: 0.0, gamma: 1.0 },
             Self::Vibrance { vibrance: 0.0, saturation: 0.0 },
             Self::HueSaturation { hue: 0.0, saturation: 0.0, lightness: 0.0, colorize: false },
-            Self::ColorBalance { shadows: [0.0; 3], midtones: [0.0; 3], highlights: [0.0; 3], preserve_luminosity: true },
+            Self::ColorBalance {
+                shadows: [0.0; 3],
+                midtones: [0.0; 3],
+                highlights: [0.0; 3],
+                preserve_luminosity: true,
+            },
             Self::BlackWhite { weights: [40.0, 60.0, 40.0, 60.0, 20.0, 80.0], tint: None },
             Self::PhotoFilter { color: Rgba::rgb(236, 138, 0), density: 25.0, preserve_luminosity: true },
             Self::ChannelMixer {
@@ -260,7 +322,10 @@ impl Adjustment {
                 blue: [0.0, 0.0, 100.0, 0.0],
                 monochrome: false,
             },
-            Self::SelectiveColor { ranges: ColorRange::ALL.iter().map(|&r| (r, Cmyk::default())).collect(), absolute: false },
+            Self::SelectiveColor {
+                ranges: ColorRange::ALL.iter().map(|&r| (r, Cmyk::default())).collect(),
+                absolute: false,
+            },
             Self::GradientMap { gradient: Gradient::two(Rgba::BLACK, Rgba::WHITE), reverse: false },
             Self::Invert,
             Self::Posterize { levels: 4 },
@@ -337,7 +402,9 @@ impl Adjustment {
             }
             Self::HueSaturation { hue, saturation, lightness, colorize } => {
                 let lt = lightness / 100.0;
-                let light = |v: f32| if lt >= 0.0 { v + (1.0 - v) * lt } else { v * (1.0 + lt) };
+                let light = |v: f32| {
+                    if lt >= 0.0 { v + (1.0 - v) * lt } else { v * (1.0 + lt) }
+                };
                 if *colorize {
                     let l = luma(r, g, b);
                     let (r, g, b) = hsl_to_rgb(*hue, (saturation / 100.0).clamp(0.0, 1.0), l);
@@ -353,7 +420,8 @@ impl Adjustment {
                 let (_, _, l0) = rgb_to_hsl(r, g, b);
                 let ws = ((0.333 - l0) / 0.25 + 0.5).clamp(0.0, 1.0) * 0.7;
                 let wh = ((l0 - 0.667) / 0.25 + 0.5).clamp(0.0, 1.0) * 0.7;
-                let wm = ((l0 - 0.333) / 0.25 + 0.5).clamp(0.0, 1.0) * ((0.667 - l0) / 0.25 + 0.5).clamp(0.0, 1.0) * 0.7;
+                let wm =
+                    ((l0 - 0.333) / 0.25 + 0.5).clamp(0.0, 1.0) * ((0.667 - l0) / 0.25 + 0.5).clamp(0.0, 1.0) * 0.7;
                 let mut out = [r, g, b];
                 for i in 0..3 {
                     out[i] += (shadows[i] * ws + midtones[i] * wm + highlights[i] * wh) / 100.0;
@@ -393,7 +461,11 @@ impl Adjustment {
                 let d = density / 100.0;
                 let f = color.to_f32();
                 let l0 = luma(r, g, b);
-                let mut out = [r * (1.0 - d) + r * f[0] * d * 2.0, g * (1.0 - d) + g * f[1] * d * 2.0, b * (1.0 - d) + b * f[2] * d * 2.0];
+                let mut out = [
+                    r * (1.0 - d) + r * f[0] * d * 2.0,
+                    g * (1.0 - d) + g * f[1] * d * 2.0,
+                    b * (1.0 - d) + b * f[2] * d * 2.0,
+                ];
                 // Warming filters are approximated by multiplying with the filter colour, then
                 // optionally rescaling so overall brightness stays put.
                 if *preserve_luminosity {
@@ -562,11 +634,8 @@ pub fn equalize(img: &mut Image, mask: Option<&Mask>) {
 /// `shadows` and `highlights` are 0..100, `radius` in pixels.
 pub fn shadows_highlights(img: &mut Image, shadows: f32, highlights: f32, radius: f32, mask: Option<&Mask>) {
     let (w, h) = img.size();
-    let lum: Vec<u8> = img
-        .pixels()
-        .chunks_exact(4)
-        .map(|p| (luma(p[0] as f32, p[1] as f32, p[2] as f32)).round() as u8)
-        .collect();
+    let lum: Vec<u8> =
+        img.pixels().chunks_exact(4).map(|p| (luma(p[0] as f32, p[1] as f32, p[2] as f32)).round() as u8).collect();
     let guide = crate::filters::blur_mask(&Mask::from_raw(w, h, lum), radius);
     let s = shadows / 100.0;
     let hl = highlights / 100.0;

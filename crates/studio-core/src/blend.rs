@@ -114,7 +114,8 @@ impl BlendMode {
 
     pub fn from_name(s: &str) -> Option<BlendMode> {
         let k: String = s.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_lowercase();
-        let norm = |m: &BlendMode| m.label().chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_lowercase();
+        let norm =
+            |m: &BlendMode| m.label().chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_lowercase();
         Self::all().find(|m| norm(m) == k).or_else(|| Self::all().find(|m| k.len() > 3 && norm(m).starts_with(&k)))
     }
 
@@ -128,25 +129,31 @@ impl BlendMode {
             Self::ColorBurn => sep(color_burn),
             Self::LinearBurn => sep(|b, s| (b + s - 1.0).max(0.0)),
             Self::DarkerColor => {
-                if luma(s[0], s[1], s[2]) < luma(b[0], b[1], b[2]) { s } else { b }
+                if luma(s[0], s[1], s[2]) < luma(b[0], b[1], b[2]) {
+                    s
+                } else {
+                    b
+                }
             }
             Self::Lighten => sep(|b, s| b.max(s)),
             Self::Screen => sep(screen),
             Self::ColorDodge => sep(color_dodge),
             Self::LinearDodge => sep(|b, s| (b + s).min(1.0)),
             Self::LighterColor => {
-                if luma(s[0], s[1], s[2]) > luma(b[0], b[1], b[2]) { s } else { b }
+                if luma(s[0], s[1], s[2]) > luma(b[0], b[1], b[2]) {
+                    s
+                } else {
+                    b
+                }
             }
             Self::Overlay => sep(|b, s| hard_light(s, b)),
             Self::SoftLight => sep(soft_light),
             Self::HardLight => sep(hard_light),
-            Self::VividLight => sep(|b, s| {
-                if s <= 0.5 { color_burn(b, 2.0 * s) } else { color_dodge(b, 2.0 * (s - 0.5)) }
-            }),
+            Self::VividLight => {
+                sep(|b, s| if s <= 0.5 { color_burn(b, 2.0 * s) } else { color_dodge(b, 2.0 * (s - 0.5)) })
+            }
             Self::LinearLight => sep(|b, s| (b + 2.0 * s - 1.0).clamp(0.0, 1.0)),
-            Self::PinLight => sep(|b, s| {
-                if s <= 0.5 { b.min(2.0 * s) } else { b.max(2.0 * s - 1.0) }
-            }),
+            Self::PinLight => sep(|b, s| if s <= 0.5 { b.min(2.0 * s) } else { b.max(2.0 * s - 1.0) }),
             Self::HardMix => sep(|b, s| if b + s >= 1.0 { 1.0 } else { 0.0 }),
             Self::Difference => sep(|b, s| (b - s).abs()),
             Self::Exclusion => sep(|b, s| b + s - 2.0 * b * s),

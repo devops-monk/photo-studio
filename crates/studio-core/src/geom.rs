@@ -49,11 +49,7 @@ impl Rect {
         let y0 = self.y.max(o.y);
         let x1 = self.right().min(o.right());
         let y1 = self.bottom().min(o.bottom());
-        if x1 <= x0 || y1 <= y0 {
-            Rect::default()
-        } else {
-            Rect::new(x0, y0, (x1 - x0) as u32, (y1 - y0) as u32)
-        }
+        if x1 <= x0 || y1 <= y0 { Rect::default() } else { Rect::new(x0, y0, (x1 - x0) as u32, (y1 - y0) as u32) }
     }
 
     pub fn union(&self, o: &Rect) -> Rect {

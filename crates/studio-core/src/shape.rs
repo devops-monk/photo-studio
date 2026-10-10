@@ -54,7 +54,12 @@ pub fn path(kind: ShapeKind, a: (f32, f32), b: (f32, f32)) -> Option<tiny_skia::
     let mut pb = PathBuilder::new();
     match kind {
         ShapeKind::Rectangle => {
-            return Some(PathBuilder::from_rect(tiny_skia::Rect::from_ltrb(x0, y0, x1.max(x0 + 0.5), y1.max(y0 + 0.5))?));
+            return Some(PathBuilder::from_rect(tiny_skia::Rect::from_ltrb(
+                x0,
+                y0,
+                x1.max(x0 + 0.5),
+                y1.max(y0 + 0.5),
+            )?));
         }
         ShapeKind::RoundedRect { radius } => {
             let r = radius.min(rx).min(ry).max(0.0);
@@ -122,7 +127,9 @@ fn pixmap_to_image(pm: &Pixmap) -> Image {
 }
 
 pub fn render(s: &ShapeLayer, w: u32, h: u32) -> Image {
-    let Some(mut pm) = Pixmap::new(w.max(1), h.max(1)) else { return Image::new(w, h) };
+    let Some(mut pm) = Pixmap::new(w.max(1), h.max(1)) else {
+        return Image::new(w, h);
+    };
     if let Some(p) = path(s.kind, s.from, s.to) {
         let mut paint = Paint { anti_alias: true, ..Default::default() };
         if let Some(f) = s.fill.filter(|_| s.kind != ShapeKind::Line) {
@@ -149,7 +156,9 @@ pub fn render(s: &ShapeLayer, w: u32, h: u32) -> Image {
 
 /// Fill a path into a `w × h` coverage mask.
 pub fn path_mask(p: &tiny_skia::Path, w: u32, h: u32, anti_alias: bool) -> Mask {
-    let Some(mut pm) = Pixmap::new(w.max(1), h.max(1)) else { return Mask::new(w, h) };
+    let Some(mut pm) = Pixmap::new(w.max(1), h.max(1)) else {
+        return Mask::new(w, h);
+    };
     let mut paint = Paint { anti_alias, ..Default::default() };
     paint.set_color(tiny_skia::Color::WHITE);
     pm.fill_path(p, &paint, FillRule::EvenOdd, Transform::identity(), None);
@@ -158,7 +167,9 @@ pub fn path_mask(p: &tiny_skia::Path, w: u32, h: u32, anti_alias: bool) -> Mask 
 
 /// Stroke a polyline into a mask (used by Edit › Stroke on selections).
 pub fn stroke_mask(p: &tiny_skia::Path, width: f32, w: u32, h: u32) -> Mask {
-    let Some(mut pm) = Pixmap::new(w.max(1), h.max(1)) else { return Mask::new(w, h) };
+    let Some(mut pm) = Pixmap::new(w.max(1), h.max(1)) else {
+        return Mask::new(w, h);
+    };
     let mut paint = Paint { anti_alias: true, ..Default::default() };
     paint.set_color(tiny_skia::Color::WHITE);
     pm.stroke_path(p, &paint, &Stroke { width, ..Default::default() }, Transform::identity(), None);

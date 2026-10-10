@@ -10,7 +10,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::blend::pixel_noise;
-use crate::color::{luma, to_u8, Rgba};
+use crate::color::{Rgba, luma, to_u8};
 use crate::geom::Rect;
 use crate::image::{Image, Mask};
 
@@ -146,7 +146,8 @@ fn box_radii(sigma: f32) -> [usize; 3] {
         wl -= 1;
     }
     let wu = wl + 2;
-    let m_ideal = (12.0 * sigma * sigma - n * (wl * wl) as f32 - 4.0 * n * wl as f32 - 3.0 * n) / (-4.0 * wl as f32 - 4.0);
+    let m_ideal =
+        (12.0 * sigma * sigma - n * (wl * wl) as f32 - 4.0 * n * wl as f32 - 3.0 * n) / (-4.0 * wl as f32 - 4.0);
     let m = m_ideal.round() as i32;
     std::array::from_fn(|i| (((if (i as i32) < m { wl } else { wu }) - 1) / 2).max(0) as usize)
 }
@@ -157,11 +158,8 @@ pub fn blur_mask(m: &Mask, radius: f32) -> Mask {
         return m.clone();
     }
     let (w, h) = (m.width(), m.height());
-    let mut b = Buf {
-        w: w as usize,
-        h: h as usize,
-        px: m.data().iter().map(|&v| [v as f32 / 255.0, 0.0, 0.0, 0.0]).collect(),
-    };
+    let mut b =
+        Buf { w: w as usize, h: h as usize, px: m.data().iter().map(|&v| [v as f32 / 255.0, 0.0, 0.0, 0.0]).collect() };
     b.gaussian(radius / 2.0);
     Mask::from_raw(w, h, b.px.iter().map(|p| to_u8(p[0])).collect())
 }
@@ -366,9 +364,11 @@ impl Filter {
             | Self::Spherize { .. }
             | Self::PolarCoordinates { .. } => FilterGroup::Distort,
             Self::Mosaic { .. } | Self::Crystallize { .. } | Self::ColorHalftone { .. } => FilterGroup::Pixelate,
-            Self::Emboss { .. } | Self::FindEdges | Self::GlowingEdges { .. } | Self::OilPaint { .. } | Self::Solarize => {
-                FilterGroup::Stylize
-            }
+            Self::Emboss { .. }
+            | Self::FindEdges
+            | Self::GlowingEdges { .. }
+            | Self::OilPaint { .. }
+            | Self::Solarize => FilterGroup::Stylize,
             Self::Clouds { .. } | Self::Vignette { .. } | Self::LensFlare { .. } => FilterGroup::Render,
         }
     }
@@ -381,10 +381,8 @@ impl Filter {
     /// Whether the result depends on the whole canvas geometry (distortions, render), so it
     /// must run on the full layer rather than a crop around the selection.
     fn is_global(&self) -> bool {
-        matches!(
-            self.group(),
-            FilterGroup::Distort | FilterGroup::Render
-        ) || matches!(self, Self::RadialBlur { .. } | Self::TiltShift { .. })
+        matches!(self.group(), FilterGroup::Distort | FilterGroup::Render)
+            || matches!(self, Self::RadialBlur { .. } | Self::TiltShift { .. })
     }
 
     /// How far (in pixels) a filter reads around each output pixel.
@@ -543,7 +541,10 @@ impl Filter {
                 out.pixels_mut().par_chunks_mut(iw * 4).enumerate().for_each(|(y, row)| {
                     for (x, p) in row.chunks_exact_mut(4).enumerate() {
                         let n = |k: u32| {
-                            let u = pixel_noise(x as u32 ^ s.wrapping_mul(31).wrapping_add(k * 7919), y as u32 + k * 104_729);
+                            let u = pixel_noise(
+                                x as u32 ^ s.wrapping_mul(31).wrapping_add(k * 7919),
+                                y as u32 + k * 104_729,
+                            );
                             match dist {
                                 NoiseDist::Uniform => (u - 0.5) * 2.0,
                                 NoiseDist::Gaussian => {
@@ -632,7 +633,7 @@ impl Filter {
                 warp(img, |x, y| {
                     let (dx, dy) = (x - w / 2.0, y - h / 2.0);
                     let r = (dx * dx + dy * dy).sqrt() / r_max;
-                    if r >= 1.0 || r < 1e-4 {
+                    if !(1e-4..1.0).contains(&r) {
                         return (x, y);
                     }
                     let sphere = r.asin() / (PI / 2.0);
@@ -897,7 +898,12 @@ fn convolve3(img: &Image, k: [f32; 9]) -> Image {
                 }
             }
         }
-        [acc[0].round().clamp(0.0, 255.0) as u8, acc[1].round().clamp(0.0, 255.0) as u8, acc[2].round().clamp(0.0, 255.0) as u8, p[3]]
+        [
+            acc[0].round().clamp(0.0, 255.0) as u8,
+            acc[1].round().clamp(0.0, 255.0) as u8,
+            acc[2].round().clamp(0.0, 255.0) as u8,
+            p[3],
+        ]
     })
 }
 
@@ -1027,7 +1033,9 @@ fn value_noise(x: f32, y: f32, seed: u32) -> f32 {
     let (xi, yi) = (x.floor() as i32, y.floor() as i32);
     let (tx, ty) = (x - xi as f32, y - yi as f32);
     let s = |a: f32| a * a * (3.0 - 2.0 * a);
-    let n = |i: i32, j: i32| pixel_noise((i as u32).wrapping_add(seed.wrapping_mul(1013)), (j as u32).wrapping_add(seed.wrapping_mul(7)));
+    let n = |i: i32, j: i32| {
+        pixel_noise((i as u32).wrapping_add(seed.wrapping_mul(1013)), (j as u32).wrapping_add(seed.wrapping_mul(7)))
+    };
     let (a, b, c, d) = (n(xi, yi), n(xi + 1, yi), n(xi, yi + 1), n(xi + 1, yi + 1));
     let (u, v) = (s(tx), s(ty));
     (a * (1.0 - u) + b * u) * (1.0 - v) + (c * (1.0 - u) + d * u) * v

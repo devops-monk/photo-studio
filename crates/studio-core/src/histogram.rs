@@ -99,11 +99,7 @@ impl Histogram {
                 break;
             }
         }
-        if hi <= lo {
-            (0, 255)
-        } else {
-            (lo as u8, hi as u8)
-        }
+        if hi <= lo { (0, 255) } else { (lo as u8, hi as u8) }
     }
 }
 

@@ -33,8 +33,10 @@ pub enum IoError {
 pub type Result<T> = std::result::Result<T, IoError>;
 
 /// File extensions the app can open.
-pub const OPEN_EXTENSIONS: &[&str] =
-    &["pstudio", "psd", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "tga", "ico", "qoi", "ppm", "pgm", "pnm"];
+pub const OPEN_EXTENSIONS: &[&str] = &[
+    "pstudio", "psd", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "tga", "ico", "qoi", "ppm", "pgm",
+    "pnm",
+];
 
 /// Flat formats the app can export to.
 pub const EXPORT_EXTENSIONS: &[&str] = &["png", "jpg", "webp", "bmp", "tiff", "gif", "tga", "ico", "qoi", "ppm"];

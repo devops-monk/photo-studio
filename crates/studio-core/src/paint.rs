@@ -8,8 +8,8 @@
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::blend::{composite_pixel, BlendMode};
-use crate::color::{hsl_to_rgb, luma, rgb_to_hsl, to_u8, Rgba};
+use crate::blend::{BlendMode, composite_pixel};
+use crate::color::{Rgba, hsl_to_rgb, luma, rgb_to_hsl, to_u8};
 use crate::geom::Rect;
 use crate::gradient::{Gradient, GradientShape};
 use crate::image::{Image, Mask};
@@ -65,18 +65,44 @@ pub enum ToneRange {
 
 #[derive(Clone, Debug)]
 pub enum StrokeKind {
-    Paint { color: Rgba, blend: BlendMode },
+    Paint {
+        color: Rgba,
+        blend: BlendMode,
+    },
     Erase,
     /// Copy from `source` displaced by `offset` (source = dest + offset).
-    Clone { source: Image, offset: (f32, f32) },
+    Clone {
+        source: Image,
+        offset: (f32, f32),
+    },
     /// Like Clone, but matches the destination's tone and colour.
-    Heal { source: Image, offset: (f32, f32), source_low: Image, dest_low: Image },
-    Smudge { strength: f32 },
-    Dodge { range: ToneRange, exposure: f32 },
-    Burn { range: ToneRange, exposure: f32 },
-    Sponge { saturate: bool, flow: f32 },
-    Blur { strength: f32 },
-    Sharpen { strength: f32 },
+    Heal {
+        source: Image,
+        offset: (f32, f32),
+        source_low: Image,
+        dest_low: Image,
+    },
+    Smudge {
+        strength: f32,
+    },
+    Dodge {
+        range: ToneRange,
+        exposure: f32,
+    },
+    Burn {
+        range: ToneRange,
+        exposure: f32,
+    },
+    Sponge {
+        saturate: bool,
+        flow: f32,
+    },
+    Blur {
+        strength: f32,
+    },
+    Sharpen {
+        strength: f32,
+    },
 }
 
 pub struct StrokeEngine {
@@ -95,7 +121,14 @@ pub struct StrokeEngine {
 
 impl StrokeEngine {
     /// Start a stroke on `target` (layer pixels, or a mask rendered as a grey image).
-    pub fn new(target: &Image, kind: StrokeKind, tip: BrushTip, opacity: f32, flow: f32, selection: Option<Mask>) -> Self {
+    pub fn new(
+        target: &Image,
+        kind: StrokeKind,
+        tip: BrushTip,
+        opacity: f32,
+        flow: f32,
+        selection: Option<Mask>,
+    ) -> Self {
         let (w, h) = target.size();
         StrokeEngine {
             kind,
@@ -148,8 +181,13 @@ impl StrokeEngine {
     fn dab(&mut self, target: &mut Image, cx: f32, cy: f32, pressure: f32) -> Rect {
         let tip = BrushTip { size: (self.tip.size * pressure.clamp(0.05, 1.0)).max(1.0), ..self.tip };
         let r = tip.size / 2.0 + 1.0;
-        let rect = Rect::new((cx - r).floor() as i32, (cy - r).floor() as i32, (2.0 * r).ceil() as u32 + 1, (2.0 * r).ceil() as u32 + 1)
-            .intersect(&Rect::sized(self.width, self.height));
+        let rect = Rect::new(
+            (cx - r).floor() as i32,
+            (cy - r).floor() as i32,
+            (2.0 * r).ceil() as u32 + 1,
+            (2.0 * r).ceil() as u32 + 1,
+        )
+        .intersect(&Rect::sized(self.width, self.height));
         if rect.is_empty() {
             return rect;
         }
@@ -196,7 +234,12 @@ impl StrokeEngine {
                     for x in rect.x..rect.right() {
                         let c = cov_at(x, y) * s;
                         let i = (y as usize * w + x as usize) * 4;
-                        let cur = [px[i] as f32 / 255.0, px[i + 1] as f32 / 255.0, px[i + 2] as f32 / 255.0, px[i + 3] as f32 / 255.0];
+                        let cur = [
+                            px[i] as f32 / 255.0,
+                            px[i + 1] as f32 / 255.0,
+                            px[i + 2] as f32 / 255.0,
+                            px[i + 3] as f32 / 255.0,
+                        ];
                         let mut out = cur;
                         for ch in 0..4 {
                             out[ch] = cur[ch] + (carry[k][ch] - cur[ch]) * c;
@@ -237,7 +280,7 @@ impl StrokeEngine {
                         if c <= 0.0 {
                             continue;
                         }
-                        let (sx, sy) = ((x - rect.x + 1) as i32, (y - rect.y + 1) as i32);
+                        let (sx, sy) = ((x - rect.x + 1), (y - rect.y + 1));
                         let i = (y as usize * w + x as usize) * 4;
                         for ch in 0..3 {
                             let mut avg = 0.0;
@@ -428,7 +471,14 @@ mod tests {
     fn overlapping_dabs_respect_opacity() {
         let mut img = Image::filled(40, 40, Rgba::WHITE);
         let tip = BrushTip { size: 10.0, hardness: 1.0, spacing: 0.05, aliased: false };
-        let mut s = StrokeEngine::new(&img, StrokeKind::Paint { color: Rgba::BLACK, blend: BlendMode::Normal }, tip, 0.5, 1.0, None);
+        let mut s = StrokeEngine::new(
+            &img,
+            StrokeKind::Paint { color: Rgba::BLACK, blend: BlendMode::Normal },
+            tip,
+            0.5,
+            1.0,
+            None,
+        );
         for _ in 0..5 {
             s.stroke_to(&mut img, 20.0, 20.0, 1.0);
             s.stroke_to(&mut img, 22.0, 20.0, 1.0);
@@ -457,7 +507,14 @@ mod tests {
             }
         }
         let tip = BrushTip { size: 6.0, hardness: 1.0, ..Default::default() };
-        let mut s = StrokeEngine::new(&img, StrokeKind::Clone { source: img.clone(), offset: (-25.0, 0.0) }, tip, 1.0, 1.0, None);
+        let mut s = StrokeEngine::new(
+            &img,
+            StrokeKind::Clone { source: img.clone(), offset: (-25.0, 0.0) },
+            tip,
+            1.0,
+            1.0,
+            None,
+        );
         s.stroke_to(&mut img, 30.0, 10.0, 1.0);
         assert_eq!(img.get(30, 10), Rgba::rgb(255, 0, 0));
     }
@@ -466,7 +523,14 @@ mod tests {
     fn selection_masks_paint() {
         let mut img = Image::filled(20, 20, Rgba::WHITE);
         let sel = Mask::new(20, 20);
-        let mut s = StrokeEngine::new(&img, StrokeKind::Paint { color: Rgba::BLACK, blend: BlendMode::Normal }, BrushTip::default(), 1.0, 1.0, Some(sel));
+        let mut s = StrokeEngine::new(
+            &img,
+            StrokeKind::Paint { color: Rgba::BLACK, blend: BlendMode::Normal },
+            BrushTip::default(),
+            1.0,
+            1.0,
+            Some(sel),
+        );
         s.stroke_to(&mut img, 10.0, 10.0, 1.0);
         assert_eq!(img.get(10, 10), Rgba::WHITE);
     }

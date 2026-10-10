@@ -90,8 +90,20 @@ impl Default for LayerStyles {
                 spread: 0.0,
                 blend: BlendMode::Multiply,
             },
-            outer_glow: Glow { enabled: false, color: Rgba::rgb(255, 240, 180), opacity: 0.75, size: 18.0, spread: 0.0 },
-            inner_glow: Glow { enabled: false, color: Rgba::rgb(255, 240, 180), opacity: 0.75, size: 10.0, spread: 0.0 },
+            outer_glow: Glow {
+                enabled: false,
+                color: Rgba::rgb(255, 240, 180),
+                opacity: 0.75,
+                size: 18.0,
+                spread: 0.0,
+            },
+            inner_glow: Glow {
+                enabled: false,
+                color: Rgba::rgb(255, 240, 180),
+                opacity: 0.75,
+                size: 10.0,
+                spread: 0.0,
+            },
             stroke: StrokeStyle {
                 enabled: false,
                 color: Rgba::rgb(10, 132, 255),

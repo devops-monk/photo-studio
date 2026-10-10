@@ -27,8 +27,7 @@ pub enum GradientShape {
 }
 
 impl GradientShape {
-    pub const ALL: [GradientShape; 5] =
-        [Self::Linear, Self::Radial, Self::Angle, Self::Reflected, Self::Diamond];
+    pub const ALL: [GradientShape; 5] = [Self::Linear, Self::Radial, Self::Angle, Self::Reflected, Self::Diamond];
 
     pub fn label(&self) -> &'static str {
         match self {
@@ -71,8 +70,7 @@ impl Gradient {
     }
 
     pub fn reversed(&self) -> Self {
-        let mut stops: Vec<_> =
-            self.stops.iter().map(|s| GradientStop { pos: 1.0 - s.pos, color: s.color }).collect();
+        let mut stops: Vec<_> = self.stops.iter().map(|s| GradientStop { pos: 1.0 - s.pos, color: s.color }).collect();
         stops.reverse();
         Gradient { stops }
     }
@@ -81,9 +79,8 @@ impl Gradient {
     pub fn presets(fg: Rgba, bg: Rgba) -> Vec<(&'static str, Gradient)> {
         let mut fade = fg;
         fade.0[3] = 0;
-        let stops = |v: &[(f32, Rgba)]| Gradient {
-            stops: v.iter().map(|&(pos, color)| GradientStop { pos, color }).collect(),
-        };
+        let stops =
+            |v: &[(f32, Rgba)]| Gradient { stops: v.iter().map(|&(pos, color)| GradientStop { pos, color }).collect() };
         vec![
             ("Foreground to Background", Gradient::two(fg, bg)),
             ("Foreground to Transparent", Gradient::two(fg, fade)),
@@ -104,8 +101,14 @@ impl Gradient {
                 "Sunset",
                 stops(&[(0.0, Rgba::rgb(40, 20, 90)), (0.5, Rgba::rgb(230, 70, 90)), (1.0, Rgba::rgb(255, 200, 90))]),
             ),
-            ("Ocean", stops(&[(0.0, Rgba::rgb(5, 30, 70)), (0.6, Rgba::rgb(0, 140, 200)), (1.0, Rgba::rgb(170, 240, 255))])),
-            ("Copper", stops(&[(0.0, Rgba::rgb(60, 25, 10)), (0.5, Rgba::rgb(200, 110, 60)), (1.0, Rgba::rgb(255, 220, 180))])),
+            (
+                "Ocean",
+                stops(&[(0.0, Rgba::rgb(5, 30, 70)), (0.6, Rgba::rgb(0, 140, 200)), (1.0, Rgba::rgb(170, 240, 255))]),
+            ),
+            (
+                "Copper",
+                stops(&[(0.0, Rgba::rgb(60, 25, 10)), (0.5, Rgba::rgb(200, 110, 60)), (1.0, Rgba::rgb(255, 220, 180))]),
+            ),
         ]
     }
 

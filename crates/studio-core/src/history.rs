@@ -3,7 +3,7 @@
 //! Layers share pixel storage copy-on-write, so a state only costs memory for the layers that
 //! changed since the previous one.
 
-use crate::document::{Document, DocState};
+use crate::document::{DocState, Document};
 
 pub struct History {
     states: Vec<(String, DocState)>,

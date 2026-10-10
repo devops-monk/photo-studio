@@ -57,8 +57,7 @@ impl Image {
     }
 
     pub fn to_rgba_image(&self) -> image::RgbaImage {
-        image::RgbaImage::from_raw(self.width, self.height, self.data.as_ref().clone())
-            .expect("valid buffer")
+        image::RgbaImage::from_raw(self.width, self.height, self.data.as_ref().clone()).expect("valid buffer")
     }
 
     pub fn width(&self) -> u32 {
@@ -127,12 +126,9 @@ impl Image {
         let ty = y - y0;
         let (x0, y0) = (x0 as i32, y0 as i32);
         let mut acc = [0.0f32; 4];
-        for (dx, dy, w) in [
-            (0, 0, (1.0 - tx) * (1.0 - ty)),
-            (1, 0, tx * (1.0 - ty)),
-            (0, 1, (1.0 - tx) * ty),
-            (1, 1, tx * ty),
-        ] {
+        for (dx, dy, w) in
+            [(0, 0, (1.0 - tx) * (1.0 - ty)), (1, 0, tx * (1.0 - ty)), (0, 1, (1.0 - tx) * ty), (1, 1, tx * ty)]
+        {
             let px = x0 + dx;
             let py = y0 + dy;
             if px < 0 || py < 0 || px >= self.width as i32 || py >= self.height as i32 {
@@ -216,10 +212,7 @@ impl Image {
             if cov <= 0.0 {
                 continue;
             }
-            let out = crate::blend::mix_pixel(
-                [p[0], p[1], p[2], p[3]],
-                [src[0], src[1], src[2], src[3] * cov],
-            );
+            let out = crate::blend::mix_pixel([p[0], p[1], p[2], p[3]], [src[0], src[1], src[2], src[3] * cov]);
             p.copy_from_slice(&out);
         }
     }
@@ -327,8 +320,7 @@ impl Mask {
                 y1 = y1.max(y);
             }
         }
-        (x0 != usize::MAX)
-            .then(|| Rect::new(x0 as i32, y0 as i32, (x1 - x0 + 1) as u32, (y1 - y0 + 1) as u32))
+        (x0 != usize::MAX).then(|| Rect::new(x0 as i32, y0 as i32, (x1 - x0 + 1) as u32, (y1 - y0 + 1) as u32))
     }
 
     pub fn crop(&self, r: Rect) -> Mask {

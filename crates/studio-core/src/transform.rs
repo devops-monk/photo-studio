@@ -132,7 +132,9 @@ pub fn flip_mask(m: &Mask, horizontal: bool) -> Mask {
 
 /// Render `img` through affine `t` (source → destination) onto a `w × h` transparent canvas.
 pub fn affine(img: &Image, t: &Affine, w: u32, h: u32) -> Image {
-    let Some(inv) = t.invert() else { return Image::new(w, h) };
+    let Some(inv) = t.invert() else {
+        return Image::new(w, h);
+    };
     let mut out = Image::new(w, h);
     out.pixels_mut().par_chunks_mut(w as usize * 4).enumerate().for_each(|(y, row)| {
         for x in 0..w as usize {

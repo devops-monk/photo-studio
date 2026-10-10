@@ -271,7 +271,9 @@ impl Document {
 
     /// Copy (or cut) the selected pixels of the active layer into a new layer.
     pub fn layer_via(&mut self, cut: bool) -> bool {
-        let Some(layer) = self.active_layer() else { return false };
+        let Some(layer) = self.active_layer() else {
+            return false;
+        };
         if !matches!(layer.kind, LayerKind::Raster) {
             return false;
         }
@@ -458,19 +460,33 @@ impl Document {
 
     pub fn flip(&mut self, horizontal: bool) {
         let (w, h) = (self.width, self.height);
-        self.transform_all(w, h, |i| transform::flip(i, horizontal), |m| transform::flip_mask(m, horizontal), Params::Rasterize);
+        self.transform_all(
+            w,
+            h,
+            |i| transform::flip(i, horizontal),
+            |m| transform::flip_mask(m, horizontal),
+            Params::Rasterize,
+        );
     }
 
     pub fn rotate_arbitrary(&mut self, deg: f32) {
         let (nw, nh, t) = transform::rotation_fit(self.width, self.height, deg);
-        self.transform_all(nw, nh, |i| transform::affine(i, &t, nw, nh), |m| transform::affine_mask(m, &t, nw, nh), Params::Rasterize);
+        self.transform_all(
+            nw,
+            nh,
+            |i| transform::affine(i, &t, nw, nh),
+            |m| transform::affine_mask(m, &t, nw, nh),
+            Params::Rasterize,
+        );
     }
 
     /// Transform the active layer's pixels (Free Transform), limited to the selection if any.
     pub fn transform_active(&mut self, t: &Affine) {
         let (w, h) = (self.width, self.height);
         let sel = self.selection.clone();
-        let Some(l) = self.active_layer_mut() else { return };
+        let Some(l) = self.active_layer_mut() else {
+            return;
+        };
         if l.is_adjustment() {
             return;
         }
@@ -500,7 +516,9 @@ impl Document {
         }
         let sel = self.selection.clone();
         let (w, h) = (self.width, self.height);
-        let Some(l) = self.active_layer_mut() else { return };
+        let Some(l) = self.active_layer_mut() else {
+            return;
+        };
         match &mut l.kind {
             LayerKind::Text(t) => {
                 t.x += dx as f32;

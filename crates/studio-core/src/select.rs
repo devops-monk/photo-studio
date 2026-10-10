@@ -268,14 +268,10 @@ pub fn largest_component(m: &Mask) -> Mask {
         while let Some(i) = q.pop_front() {
             n += 1;
             let (x, y) = (i % w, i / w);
-            for j in [
-                (x > 0).then(|| i - 1),
-                (x + 1 < w).then(|| i + 1),
-                (y > 0).then(|| i - w),
-                (y + 1 < h).then(|| i + w),
-            ]
-            .into_iter()
-            .flatten()
+            for j in
+                [(x > 0).then(|| i - 1), (x + 1 < w).then(|| i + 1), (y > 0).then(|| i - w), (y + 1 < h).then(|| i + w)]
+                    .into_iter()
+                    .flatten()
             {
                 if src[j] >= 128 && label[j] == 0 {
                     label[j] = next;
@@ -317,9 +313,10 @@ pub fn fill_holes(m: &Mask) -> Mask {
     }
     while let Some(i) = q.pop_front() {
         let (x, y) = (i % w, i / w);
-        for j in [(x > 0).then(|| i - 1), (x + 1 < w).then(|| i + 1), (y > 0).then(|| i - w), (y + 1 < h).then(|| i + w)]
-            .into_iter()
-            .flatten()
+        for j in
+            [(x > 0).then(|| i - 1), (x + 1 < w).then(|| i + 1), (y > 0).then(|| i - w), (y + 1 < h).then(|| i + w)]
+                .into_iter()
+                .flatten()
         {
             if src[j] < 128 && !outside[j] {
                 outside[j] = true;

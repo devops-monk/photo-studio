@@ -2,7 +2,7 @@
 
 use std::sync::OnceLock;
 
-use ab_glyph::{point, Font, FontRef, PxScale, ScaleFont};
+use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
 use serde::{Deserialize, Serialize};
 
 use crate::color::Rgba;
@@ -153,7 +153,12 @@ fn layout(t: &TextLayer) -> (Vec<Line>, f32, f32) {
 pub fn bounds(t: &TextLayer) -> Rect {
     let (lines, line_h, _) = layout(t);
     let width = t.box_width.unwrap_or_else(|| lines.iter().map(|l| l.width).fold(0.0, f32::max));
-    Rect::new(t.x.floor() as i32, t.y.floor() as i32, width.ceil().max(1.0) as u32, (line_h * lines.len() as f32).ceil().max(1.0) as u32)
+    Rect::new(
+        t.x.floor() as i32,
+        t.y.floor() as i32,
+        width.ceil().max(1.0) as u32,
+        (line_h * lines.len() as f32).ceil().max(1.0) as u32,
+    )
 }
 
 pub fn render(t: &TextLayer, w: u32, h: u32) -> Image {
