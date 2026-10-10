@@ -64,6 +64,7 @@ pub enum Dialog {
     LayerStyle { styles: LayerStyles, section: usize, pv: Preview },
     NewGuide { horizontal: bool, pos: f32 },
     Batch { action: usize, format: usize },
+    EditNote { index: usize, text: String, is_new: bool },
     CommandPalette { query: String, selected: usize },
     Preferences,
     About,
@@ -763,6 +764,45 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
                 _ => true,
             }
         }
+        Dialog::EditNote { index, text, is_new } => modal(ctx, "note", "Note", 340.0, |ui| {
+            let r = ui.add(
+                egui::TextEdit::multiline(text).desired_rows(4).desired_width(f32::INFINITY).hint_text("Write a note…"),
+            );
+            r.request_focus();
+            let mut delete = false;
+            ui.add_space(6.0);
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), 30.0),
+                egui::Layout::right_to_left(egui::Align::Center),
+                |ui| {
+                    let ok = primary_button(ui, "Done").clicked();
+                    let cancel =
+                        secondary_button(ui, "Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
+                    delete = !*is_new && secondary_button(ui, "Delete").clicked();
+                    let i = *index;
+                    if let Some(tab) = app.tab_mut() {
+                        if ok && !text.trim().is_empty() {
+                            if let Some(n) = tab.doc.annotations.notes.get_mut(i) {
+                                n.1 = text.clone();
+                            }
+                            tab.commit("Note");
+                        } else if delete || ((ok || cancel) && *is_new) {
+                            if i < tab.doc.annotations.notes.len() {
+                                tab.doc.annotations.notes.remove(i);
+                            }
+                            if delete {
+                                tab.commit("Delete Note");
+                            }
+                        }
+                    }
+                    *is_new = !(ok || cancel || delete) && *is_new;
+                    if ok || cancel || delete {
+                        *index = usize::MAX;
+                    }
+                },
+            );
+            *index != usize::MAX
+        }),
         Dialog::Batch { action, format } => modal(ctx, "batch", "Batch", 400.0, |ui| {
             let names: Vec<String> = app.prefs.macros.iter().map(|m| m.0.clone()).collect();
             *action = (*action).min(names.len().saturating_sub(1));

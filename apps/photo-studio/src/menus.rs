@@ -20,6 +20,8 @@ pub fn action_label(a: &Action) -> String {
         Action::SaveAs => "Save As…".into(),
         Action::ExportAs => "Export As…".into(),
         Action::QuickExportPng => "Quick Export as PNG…".into(),
+        Action::ExportSlices => "Export Slices…".into(),
+        Action::ClearAnnotations => "Clear Notes, Counts and Slices".into(),
         Action::Revert => "Revert".into(),
         Action::Quit => "Quit".into(),
         Action::Undo => "Undo".into(),
@@ -213,6 +215,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             ui.separator();
             item(ui, out, Action::ExportAs, doc);
             item(ui, out, Action::QuickExportPng, doc);
+            item(ui, out, Action::ExportSlices, tab.is_some_and(|t| !t.doc.annotations.slices.is_empty()));
             ui.menu_button("Automate", |ui| {
                 item(ui, out, Action::Batch, true);
                 if app.recording.is_some() {
@@ -439,6 +442,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             check(ui, out, Action::ToggleSnap, app.prefs.snap);
             item(ui, out, Action::NewGuide, doc);
             item(ui, out, Action::ClearGuides, doc && tab.is_some_and(|t| !t.doc.guides.is_empty()));
+            item(ui, out, Action::ClearAnnotations, doc);
             ui.separator();
             check(ui, out, Action::TogglePixelGrid, app.prefs.pixel_grid);
             check(ui, out, Action::ToggleSelectionEdges, app.show_edges);

@@ -756,6 +756,21 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 pct(ui, "Darken", &mut o.red_eye_darken);
                 label_dim(ui, "Click an eye, or drag a box around it");
             }
+            Tool::Note | Tool::Count | Tool::Slice => {
+                if let Some(tab) = app.tab() {
+                    let a = &tab.doc.annotations;
+                    label_dim(
+                        ui,
+                        format!("{} notes · {} counted · {} slices", a.notes.len(), a.counts.len(), a.slices.len()),
+                    );
+                }
+                if app.tool == Tool::Slice && ui.button("Export Slices…").clicked() {
+                    actions.push(Action::ExportSlices);
+                }
+                if ui.button("Clear All").clicked() {
+                    actions.push(Action::ClearAnnotations);
+                }
+            }
             Tool::Ruler => match app.cv.ruler {
                 Some((a, b)) => {
                     let (dx, dy) = (b.0 - a.0, b.1 - a.1);

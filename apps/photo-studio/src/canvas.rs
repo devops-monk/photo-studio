@@ -1108,6 +1108,68 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                 app.edit_pixels(ctx, "Red Eye", |img, _| paint::red_eye(img, a, darken));
             }
         }
+        Tool::Note => {
+            if resp.clicked() {
+                let tab = &app.docs[active];
+                let hit = tab.doc.annotations.notes.iter().position(|(q, _)| view.to_screen(*q).distance(pos) < 14.0);
+                let (index, text) = match hit {
+                    Some(i) => (i, tab.doc.annotations.notes[i].1.clone()),
+                    None => {
+                        let tab = &mut app.docs[active];
+                        tab.doc.annotations.notes.push((p, String::new()));
+                        (tab.doc.annotations.notes.len() - 1, String::new())
+                    }
+                };
+                app.dialog = Some(crate::dialogs::Dialog::EditNote { index, text, is_new: hit.is_none() });
+            }
+        }
+        Tool::Count => {
+            if resp.clicked() {
+                let tab = &mut app.docs[active];
+                if mods.alt {
+                    let nearest = tab
+                        .doc
+                        .annotations
+                        .counts
+                        .iter()
+                        .enumerate()
+                        .min_by(|a, b| {
+                            view.to_screen(*a.1).distance(pos).total_cmp(&view.to_screen(*b.1).distance(pos))
+                        })
+                        .map(|x| x.0);
+                    if let Some(i) = nearest {
+                        tab.doc.annotations.counts.remove(i);
+                        tab.commit("Remove Count");
+                    }
+                } else {
+                    tab.doc.annotations.counts.push(p);
+                    tab.commit("Count");
+                }
+            }
+        }
+        Tool::Slice => {
+            if primary_pressed && resp.drag_started() {
+                app.cv.drag = Some(Drag::Marquee {
+                    start: origin,
+                    cur: p,
+                    op: SelectOp::Replace,
+                    ellipse: false,
+                    constrain: false,
+                });
+            }
+            if let Some(Drag::Marquee { cur, .. }) = &mut app.cv.drag {
+                *cur = p;
+                if resp.drag_stopped() {
+                    let Some(Drag::Marquee { start, cur, .. }) = app.cv.drag.take() else { unreachable!() };
+                    let tab = &mut app.docs[active];
+                    let r = Rect::from_points(start, cur).intersect(&tab.doc.bounds());
+                    if r.w >= 2 && r.h >= 2 {
+                        tab.doc.annotations.slices.push(r);
+                        tab.commit("Slice");
+                    }
+                }
+            }
+        }
         Tool::Ruler => {
             if primary_pressed && resp.drag_started() {
                 app.cv.ruler = Some((origin, p));
@@ -2079,6 +2141,59 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
         }
         let (cx, cy) = ts.center();
         painter.circle_stroke(view.to_screen((cx + ts.tx, cy + ts.ty)), 4.0, Stroke::new(1.5, t.accent));
+    }
+    // Annotations: slices, counts, notes.
+    if let Some(tab) = app.tab() {
+        let a = &tab.doc.annotations;
+        for (i, r) in a.slices.iter().enumerate() {
+            let q = view.quad((r.x as f32, r.y as f32), (r.right() as f32, r.bottom() as f32));
+            let tl = q[0];
+            painter.add(Shape::closed_line(q, Stroke::new(1.0, Color32::from_rgb(255, 159, 10))));
+            let tag = ERect::from_min_size(tl, Vec2::new(22.0, 16.0));
+            painter.rect_filled(tag, 3.0, Color32::from_rgb(255, 159, 10));
+            painter.text(
+                tag.center(),
+                egui::Align2::CENTER_CENTER,
+                format!("{:02}", i + 1),
+                egui::FontId::proportional(10.0),
+                Color32::BLACK,
+            );
+        }
+        for (i, c) in a.counts.iter().enumerate() {
+            let s = view.to_screen(*c);
+            painter.circle(s, 9.0, Color32::from_rgb(10, 132, 255), Stroke::new(1.5, Color32::WHITE));
+            painter.text(
+                s,
+                egui::Align2::CENTER_CENTER,
+                format!("{}", i + 1),
+                egui::FontId::proportional(10.5),
+                Color32::WHITE,
+            );
+        }
+        for (q, text) in &a.notes {
+            let s = view.to_screen(*q);
+            let r = ERect::from_center_size(s, Vec2::splat(20.0));
+            painter.rect(
+                r,
+                4.0,
+                Color32::from_rgb(255, 214, 10),
+                Stroke::new(1.0, Color32::from_black_alpha(120)),
+                egui::StrokeKind::Inside,
+            );
+            painter.text(
+                s,
+                egui::Align2::CENTER_CENTER,
+                egui_phosphor::regular::NOTE,
+                egui::FontId::proportional(12.0),
+                Color32::BLACK,
+            );
+            if pointer.is_some_and(|p| r.contains(p)) && !text.is_empty() {
+                let g = painter.layout(text.clone(), egui::FontId::proportional(12.0), Color32::BLACK, 220.0);
+                let bubble = ERect::from_min_size(r.right_top() + Vec2::new(6.0, 0.0), g.size() + Vec2::splat(12.0));
+                painter.rect_filled(bubble, 6.0, Color32::from_rgb(255, 244, 180));
+                painter.galley(bubble.min + Vec2::splat(6.0), g, Color32::BLACK);
+            }
+        }
     }
     // Paths: the selected one, plus the one being drawn.
     let path_col = Color32::from_rgb(0, 200, 255);

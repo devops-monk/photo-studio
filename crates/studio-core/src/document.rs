@@ -7,6 +7,31 @@ use crate::image::{Image, Mask};
 use crate::layer::{FillLayer, Layer, LayerId, LayerKind};
 use crate::transform::{self, Resample, Rotation};
 
+/// Non-printing annotations: sticky notes, count markers and export slices.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Annotations {
+    pub notes: Vec<((f32, f32), String)>,
+    pub counts: Vec<(f32, f32)>,
+    pub slices: Vec<Rect>,
+}
+
+impl Annotations {
+    /// Move every annotation point (crop, resize).
+    pub fn map(&mut self, f: impl Fn((f32, f32)) -> (f32, f32)) {
+        for (p, _) in &mut self.notes {
+            *p = f(*p);
+        }
+        for p in &mut self.counts {
+            *p = f(*p);
+        }
+        for r in &mut self.slices {
+            let a = f((r.x as f32, r.y as f32));
+            let b = f((r.right() as f32, r.bottom() as f32));
+            *r = Rect::from_points(a, b);
+        }
+    }
+}
+
 /// A ruler guide: a horizontal or vertical line at `pos` canvas pixels.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Guide {
@@ -29,6 +54,7 @@ pub struct Document {
     pub paths: Vec<crate::path::NamedPath>,
     /// Saved selections (alpha channels).
     pub channels: Vec<(String, Mask)>,
+    pub annotations: Annotations,
 }
 
 /// Everything history needs to restore.
@@ -42,6 +68,7 @@ pub struct DocState {
     guides: Vec<Guide>,
     paths: Vec<crate::path::NamedPath>,
     channels: Vec<(String, Mask)>,
+    annotations: Annotations,
 }
 
 /// Where existing pixels sit when the canvas grows or shrinks.
@@ -109,6 +136,7 @@ impl Document {
             guides: Vec::new(),
             paths: Vec::new(),
             channels: Vec::new(),
+            annotations: Annotations::default(),
         };
         let (name, img) = match bg {
             Some(c) => ("Background", Image::filled(width, height, c)),
@@ -131,6 +159,7 @@ impl Document {
             guides: Vec::new(),
             paths: Vec::new(),
             channels: Vec::new(),
+            annotations: Annotations::default(),
         };
         let id = doc.new_id();
         doc.layers.push(Layer::raster(id, "Background", img));
@@ -157,6 +186,7 @@ impl Document {
             guides: self.guides.clone(),
             paths: self.paths.clone(),
             channels: self.channels.clone(),
+            annotations: self.annotations.clone(),
         }
     }
 
@@ -169,6 +199,7 @@ impl Document {
         self.guides = s.guides.clone();
         self.paths = s.paths.clone();
         self.channels = s.channels.clone();
+        self.annotations = s.annotations.clone();
         if let Some(max) = self.layers.iter().map(|l| l.id).max() {
             self.next_id = self.next_id.max(max + 1);
         }
@@ -623,6 +654,7 @@ impl Document {
                 for p in &mut self.paths {
                     p.path.translate(dx, dy);
                 }
+                self.annotations.map(|q| (q.0 + dx, q.1 + dy));
             }
             Params::Scale(sx, sy) => {
                 for g in &mut self.guides {
@@ -631,11 +663,13 @@ impl Document {
                 for p in &mut self.paths {
                     p.path.map(|q| (q.0 * sx, q.1 * sy));
                 }
+                self.annotations.map(|q| (q.0 * sx, q.1 * sy));
             }
             // Guides and paths don't survive rotation meaningfully.
             Params::Rasterize => {
                 self.guides.clear();
                 self.paths.clear();
+                self.annotations = Annotations::default();
             }
         }
         self.width = nw;

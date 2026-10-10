@@ -1052,3 +1052,43 @@ fn multi_layer_selection_actions() {
     h.state_mut().run(&ctx, Action::DeleteLayer);
     assert_eq!(h.state().tab().unwrap().doc.layers.len(), n - 2);
 }
+
+#[test]
+fn note_count_and_slice_tools() {
+    let mut h = harness();
+    // Note: click, type, Done.
+    h.state_mut().set_tool(Tool::Note);
+    click(&mut h, (50.0, 50.0));
+    assert!(matches!(h.state().dialog, Some(crate::dialogs::Dialog::EditNote { .. })));
+    h.event(Event::Text("Fix the sky".into()));
+    h.run_steps(2);
+    h.get_by_label("Done").click();
+    h.run_steps(3);
+    assert!(h.state().dialog.is_none());
+    assert_eq!(h.state().tab().unwrap().doc.annotations.notes[0].1, "Fix the sky");
+
+    // Count: three clicks, then Alt-click removes the nearest.
+    h.state_mut().set_tool(Tool::Count);
+    for x in [100.0, 150.0, 200.0] {
+        click(&mut h, (x, 100.0));
+    }
+    let p = screen(&h, 151.0, 100.0);
+    h.event(Event::ModifiersChanged(Modifiers::ALT));
+    h.event(Event::PointerMoved(p));
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: p, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::ALT });
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: p, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::ALT });
+    h.run_steps(2);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    let counts = h.state().tab().unwrap().doc.annotations.counts.clone();
+    assert_eq!(counts.len(), 2);
+    assert!(counts.iter().all(|c| (c.0 - 150.0).abs() > 10.0), "{counts:?}");
+
+    // Slice: drag a region.
+    h.state_mut().set_tool(Tool::Slice);
+    drag(&mut h, (10.0, 10.0), (110.0, 60.0), Modifiers::NONE);
+    let s = h.state().tab().unwrap().doc.annotations.slices.clone();
+    assert_eq!(s.len(), 1);
+    assert!((s[0].w as i32 - 100).abs() <= 2 && (s[0].h as i32 - 50).abs() <= 2, "{s:?}");
+}

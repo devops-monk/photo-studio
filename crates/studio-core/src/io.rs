@@ -188,6 +188,8 @@ struct Manifest {
     paths: Vec<crate::path::NamedPath>,
     #[serde(default)]
     channels: Vec<String>,
+    #[serde(default)]
+    annotations: crate::document::Annotations,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -236,6 +238,7 @@ pub fn project_bytes(doc: &Document) -> Result<Vec<u8>> {
         guides: doc.guides.clone(),
         paths: doc.paths.clone(),
         channels: doc.channels.iter().map(|(n, _)| n.clone()).collect(),
+        annotations: doc.annotations.clone(),
         layers: doc
             .layers
             .iter()
@@ -316,6 +319,7 @@ pub fn project_from_bytes(bytes: &[u8]) -> Result<Document> {
     doc.ppi = m.ppi;
     doc.guides = m.guides;
     doc.paths = m.paths;
+    doc.annotations = m.annotations;
     let mut read_png = |name: String| -> Result<Option<DynamicImage>> {
         match za.by_name(&name) {
             Ok(mut f) => {
@@ -664,6 +668,9 @@ mod tests {
         d.add_layer_of_kind("Invert", LayerKind::Adjustment(Adjustment::Invert));
         d.layers[2].styles.drop_shadow.enabled = true;
         d.guides.push(crate::document::Guide { horizontal: true, pos: 5.0 });
+        d.annotations.notes.push(((3.0, 4.0), "Fix the sky".into()));
+        d.annotations.counts.push((7.0, 8.0));
+        d.annotations.slices.push(crate::geom::Rect::new(0, 0, 8, 6));
         d.channels.push(("Alpha 1".into(), crate::select::rect_mask(16, 12, crate::geom::Rect::new(1, 1, 4, 4))));
         d
     }
@@ -684,6 +691,7 @@ mod tests {
         }
         assert_eq!(back.composite(), d.composite());
         assert_eq!(back.guides, d.guides);
+        assert_eq!(back.annotations, d.annotations);
         assert_eq!(back.channels, d.channels);
     }
 

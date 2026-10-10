@@ -17,6 +17,8 @@ pub enum Action {
     SaveAs,
     ExportAs,
     QuickExportPng,
+    ExportSlices,
+    ClearAnnotations,
     Revert,
     Quit,
     // Edit

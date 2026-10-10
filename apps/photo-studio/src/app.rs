@@ -672,6 +672,30 @@ impl App {
                     }
                 }
             }
+            Action::ExportSlices => {
+                let Some(tab) = self.tab() else { return };
+                let slices = tab.doc.annotations.slices.clone();
+                if slices.is_empty() {
+                    self.notify(ctx, "Draw slices with the Slice tool first");
+                    return;
+                }
+                let Some(dir) = rfd::FileDialog::new().set_title("Export slices to").pick_folder() else { return };
+                let comp = tab.doc.composite();
+                let stem = Path::new(&tab.name)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "image".into());
+                let mut saved = 0;
+                for (i, r) in slices.iter().enumerate() {
+                    if let Ok(png) = io::encode(&comp.crop(*r), "png", &io::ExportOptions::default()) {
+                        if std::fs::write(dir.join(format!("{stem}_{:02}.png", i + 1)), png).is_ok() {
+                            saved += 1;
+                        }
+                    }
+                }
+                self.notify(ctx, format!("Exported {saved} slices to {}", dir.display()));
+            }
+            Action::ClearAnnotations => self.edit("Clear Annotations", |d| d.annotations = Default::default()),
             Action::Revert => {
                 if let Some(tab) = self.tab_mut() {
                     tab.goto_history(0);
