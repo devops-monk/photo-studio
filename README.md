@@ -14,7 +14,7 @@ One self-contained binary, no runtime, works offline.</p>
 - **Layers**: pixel, type, shape, fill (solid, gradient, pattern) and adjustment layers; groups (pass-through or isolated); smart objects with editable smart filters and lossless transforms; layer masks, clipping masks, 27 blend modes, opacity and fill opacity, locks and color labels
 - **Ten layer styles**: Bevel & Emboss, Stroke, inner and outer shadows and glows, Satin, and color, gradient and pattern overlays
 - **16 adjustments**, live as adjustment layers or applied directly, plus Auto Tone, Auto Contrast, Auto Color, Equalize and Shadows/Highlights
-- **31 filters** with live preview inside the selection, including Iris and Tilt-Shift blur, Reduce Noise, Liquify-style distortions, Oil Paint and Lens Flare
+- **33 filters** with live preview inside the selection, including Field, Path, Iris and Tilt-Shift blur, Reduce Noise, Liquify-style distortions, Oil Paint and Lens Flare
 - **Content-aware**: Content-Aware Fill (⇧⌫), the Remove brush, Patch and Content-Aware Move
 - **Selections**: Select Subject, Color Range, Quick Mask (Q), saved selections, feather, expand, contract, border and smooth
 - **Paths**: Bézier paths become selections, fills, strokes or shape layers

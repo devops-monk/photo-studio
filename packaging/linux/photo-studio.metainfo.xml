@@ -8,7 +8,7 @@
   <developer id="com.devops-monk"><name>Abhay Pratap Singh</name></developer>
   <description>
     <p>Photo Studio is a fast, native photo editor with layers, masks, adjustment layers,
-    layer styles, selections, brushes, type, shapes, 30 filters and PSD support.</p>
+    layer styles, selections, brushes, type, shapes, 33 filters and PSD support.</p>
   </description>
   <launchable type="desktop-id">photo-studio.desktop</launchable>
   <url type="homepage">https://photo-studio.devops-monk.com</url>
