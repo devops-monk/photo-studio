@@ -14,7 +14,7 @@ rust-version = "1.88"
 
 [workspace.dependencies]
 studio-core = { path = "crates/studio-core" }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff", "gif", "tga", "ico", "qoi", "pnm", "rayon"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff", "gif", "tga", "ico", "qoi", "pnm", "rayon", "exr", "hdr"] }
 rayon = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -23,6 +23,8 @@ tiny-skia = "0.11"
 ab_glyph = "0.2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 psd = "0.3"
+resvg = { version = "0.48", default-features = false, features = ["text", "system-fonts", "memmap-fonts"] }
+quick-xml = "0.38"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -95,6 +95,8 @@ const EXPORT_FORMATS: &[(&str, &str)] = &[
     ("ICO", "ico"),
     ("QOI", "qoi"),
     ("Photoshop (PSD)", "psd"),
+    ("OpenRaster (ORA, layered)", "ora"),
+    ("OpenEXR", "exr"),
 ];
 
 impl Dialog {

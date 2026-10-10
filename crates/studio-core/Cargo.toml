@@ -18,6 +18,8 @@ tiny-skia.workspace = true
 ab_glyph.workspace = true
 zip.workspace = true
 psd.workspace = true
+resvg.workspace = true
+quick-xml.workspace = true
 
 [lints]
 workspace = true

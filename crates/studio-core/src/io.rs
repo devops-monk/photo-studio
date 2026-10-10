@@ -34,12 +34,12 @@ pub type Result<T> = std::result::Result<T, IoError>;
 
 /// File extensions the app can open.
 pub const OPEN_EXTENSIONS: &[&str] = &[
-    "pstudio", "psd", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "tga", "ico", "qoi", "ppm", "pgm",
-    "pnm",
+    "pstudio", "psd", "ora", "svg", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "tga", "ico", "qoi",
+    "ppm", "pgm", "pnm", "exr", "hdr",
 ];
 
 /// Flat formats the app can export to.
-pub const EXPORT_EXTENSIONS: &[&str] = &["png", "jpg", "webp", "bmp", "tiff", "gif", "tga", "ico", "qoi", "ppm"];
+pub const EXPORT_EXTENSIONS: &[&str] = &["png", "jpg", "webp", "bmp", "tiff", "gif", "tga", "ico", "qoi", "ppm", "exr"];
 
 pub const PROJECT_EXTENSION: &str = "pstudio";
 
@@ -81,6 +81,15 @@ pub fn open(path: &Path) -> Result<Document> {
     match ext(path).as_str() {
         "pstudio" => load_project(path),
         "psd" | "psb" => read_psd(&std::fs::read(path)?),
+        "ora" => crate::formats::read_ora(&std::fs::read(path)?),
+        "svg" => {
+            let img = crate::formats::rasterize_svg(&std::fs::read(path)?, 8192)?;
+            let mut doc = Document::from_image(img);
+            if let Some(stem) = path.file_stem() {
+                doc.layers[0].name = stem.to_string_lossy().into_owned();
+            }
+            Ok(doc)
+        }
         _ => {
             let img = read_image(path)?;
             Ok(Document::from_image(img))
@@ -108,6 +117,10 @@ pub fn encode(img: &Image, extension: &str, opts: &ExportOptions) -> Result<Vec<
             let rgb = DynamicImage::ImageRgba8(over_matte(img, opts.matte).to_rgba_image()).into_rgb8();
             let fmt = if e == "bmp" { ImageFormat::Bmp } else { ImageFormat::Pnm };
             rgb.write_to(&mut out, fmt)?;
+        }
+        "exr" => {
+            let f = DynamicImage::ImageRgba8(img.to_rgba_image()).into_rgba32f();
+            f.write_to(&mut out, ImageFormat::OpenExr)?;
         }
         "ico" => {
             let max = img.width().max(img.height());
@@ -137,6 +150,9 @@ pub fn export(doc: &Document, path: &Path, opts: &ExportOptions) -> Result<()> {
     let e = ext(path);
     if e == "psd" {
         return save_psd(doc, path);
+    }
+    if e == "ora" {
+        return write_atomic(path, &crate::formats::ora_bytes(doc)?);
     }
     let bytes = encode(&doc.composite(), &e, opts)?;
     write_atomic(path, &bytes)
@@ -190,7 +206,7 @@ struct LayerMeta {
     parent: Option<LayerId>,
 }
 
-fn png_bytes(img: &image::DynamicImage) -> Result<Vec<u8>> {
+pub(crate) fn png_bytes(img: &image::DynamicImage) -> Result<Vec<u8>> {
     let mut c = Cursor::new(Vec::new());
     img.write_to(&mut c, ImageFormat::Png)?;
     Ok(c.into_inner())

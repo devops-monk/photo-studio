@@ -9,6 +9,7 @@ pub mod color;
 pub mod composite;
 pub mod document;
 pub mod filters;
+pub mod formats;
 pub mod geom;
 pub mod gradient;
 pub mod histogram;

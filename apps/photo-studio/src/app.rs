@@ -244,6 +244,8 @@ impl App {
             .add_filter("All supported", io::OPEN_EXTENSIONS)
             .add_filter("Photo Studio project", &[io::PROJECT_EXTENSION])
             .add_filter("Photoshop", &["psd"])
+            .add_filter("OpenRaster", &["ora"])
+            .add_filter("SVG", &["svg"])
             .add_filter("Images", &io::OPEN_EXTENSIONS[2..]);
         if let Some(dir) = self.dialog_dir() {
             d = d.set_directory(dir);
@@ -271,7 +273,8 @@ impl App {
                     .set_title("Save Project")
                     .set_file_name(format!("{stem}.{}", io::PROJECT_EXTENSION))
                     .add_filter("Photo Studio project", &[io::PROJECT_EXTENSION])
-                    .add_filter("Photoshop document", &["psd"]);
+                    .add_filter("Photoshop document", &["psd"])
+                    .add_filter("OpenRaster", &["ora"]);
                 if let Some(dir) =
                     tab.source.as_ref().and_then(|s| s.parent().map(Path::to_path_buf)).or_else(|| self.dialog_dir())
                 {
@@ -283,9 +286,14 @@ impl App {
                 }
             }
         };
-        let is_psd = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("psd"));
+        let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        let is_psd = ext == "psd" || ext == "ora";
         let tab = &self.docs[index];
-        let result = if is_psd { io::save_psd(&tab.doc, &path) } else { io::save_project(&tab.doc, &path) };
+        let result = match ext.as_str() {
+            "psd" => io::save_psd(&tab.doc, &path),
+            "ora" => io::export(&tab.doc, &path, &io::ExportOptions::default()),
+            _ => io::save_project(&tab.doc, &path),
+        };
         match result {
             Ok(()) => {
                 let tab = &mut self.docs[index];
