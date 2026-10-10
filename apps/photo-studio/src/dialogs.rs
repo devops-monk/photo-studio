@@ -8,7 +8,7 @@ use studio_core::document::{Anchor, DocState, Document};
 use studio_core::filters::{Filter, FilterCtx};
 use studio_core::image::Image;
 use studio_core::layer::LayerKind;
-use studio_core::styles::{LayerStyles, StrokePosition};
+use studio_core::styles::{BevelStyle, LayerStyles, StrokePosition};
 use studio_core::transform::Resample;
 use studio_core::{Rgba, io, paint, select};
 
@@ -697,17 +697,19 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
             let r = panel_window(ctx, "Layer Style", |ui| {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        ui.set_width(130.0);
-                        let names =
-                            ["Drop Shadow", "Inner Shadow", "Outer Glow", "Inner Glow", "Stroke", "Color Overlay"];
-                        for (i, n) in names.iter().enumerate() {
+                        ui.set_width(150.0);
+                        for (i, n) in STYLE_NAMES.iter().enumerate() {
                             let on = match i {
-                                0 => &mut styles.drop_shadow.enabled,
-                                1 => &mut styles.inner_shadow.enabled,
-                                2 => &mut styles.outer_glow.enabled,
+                                0 => &mut styles.bevel.enabled,
+                                1 => &mut styles.stroke.enabled,
+                                2 => &mut styles.inner_shadow.enabled,
                                 3 => &mut styles.inner_glow.enabled,
-                                4 => &mut styles.stroke.enabled,
-                                _ => &mut styles.color_overlay.enabled,
+                                4 => &mut styles.satin.enabled,
+                                5 => &mut styles.color_overlay.enabled,
+                                6 => &mut styles.gradient_overlay.enabled,
+                                7 => &mut styles.pattern_overlay.enabled,
+                                8 => &mut styles.outer_glow.enabled,
+                                _ => &mut styles.drop_shadow.enabled,
                             };
                             ui.horizontal(|ui| {
                                 changed |= ui.checkbox(on, "").changed();
@@ -839,6 +841,20 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
     let _ = actions;
 }
 
+/// The Layer Style dialog's effect list, in the familiar order.
+const STYLE_NAMES: [&str; 10] = [
+    "Bevel & Emboss",
+    "Stroke",
+    "Inner Shadow",
+    "Inner Glow",
+    "Satin",
+    "Color Overlay",
+    "Gradient Overlay",
+    "Pattern Overlay",
+    "Outer Glow",
+    "Drop Shadow",
+];
+
 fn style_section(ui: &mut Ui, s: &mut LayerStyles, section: usize) -> bool {
     let mut c = false;
     let color = |ui: &mut Ui, label: &str, col: &mut Rgba| -> bool {
@@ -863,26 +879,26 @@ fn style_section(ui: &mut Ui, s: &mut LayerStyles, section: usize) -> bool {
         changed
     };
     match section {
-        0 | 1 => {
-            let sh = if section == 0 { &mut s.drop_shadow } else { &mut s.inner_shadow };
+        9 | 2 => {
+            let sh = if section == 9 { &mut s.drop_shadow } else { &mut s.inner_shadow };
             c |= toggle_row(ui, "Enabled", &mut sh.enabled);
             c |= blend(ui, &mut sh.blend);
             c |= color(ui, "Color", &mut sh.color);
             c |= crate::widgets::slider_row_pct(ui, "Opacity", &mut sh.opacity);
             c |= slider_row(ui, "Angle", &mut sh.angle, -180.0..=180.0, "°", 0);
             c |= slider_row(ui, "Distance", &mut sh.distance, 0.0..=300.0, " px", 0);
-            c |= crate::widgets::slider_row_pct(ui, if section == 0 { "Spread" } else { "Choke" }, &mut sh.spread);
+            c |= crate::widgets::slider_row_pct(ui, if section == 9 { "Spread" } else { "Choke" }, &mut sh.spread);
             c |= slider_row(ui, "Size", &mut sh.size, 0.0..=250.0, " px", 0);
         }
-        2 | 3 => {
-            let g = if section == 2 { &mut s.outer_glow } else { &mut s.inner_glow };
+        8 | 3 => {
+            let g = if section == 8 { &mut s.outer_glow } else { &mut s.inner_glow };
             c |= toggle_row(ui, "Enabled", &mut g.enabled);
             c |= color(ui, "Color", &mut g.color);
             c |= crate::widgets::slider_row_pct(ui, "Opacity", &mut g.opacity);
-            c |= crate::widgets::slider_row_pct(ui, if section == 2 { "Spread" } else { "Choke" }, &mut g.spread);
+            c |= crate::widgets::slider_row_pct(ui, if section == 8 { "Spread" } else { "Choke" }, &mut g.spread);
             c |= slider_row(ui, "Size", &mut g.size, 0.0..=250.0, " px", 0);
         }
-        4 => {
+        1 => {
             let st = &mut s.stroke;
             c |= toggle_row(ui, "Enabled", &mut st.enabled);
             c |= slider_row(ui, "Size", &mut st.size, 1.0..=250.0, " px", 0);
@@ -897,6 +913,77 @@ fn style_section(ui: &mut Ui, s: &mut LayerStyles, section: usize) -> bool {
             );
             c |= color(ui, "Color", &mut st.color);
             c |= crate::widgets::slider_row_pct(ui, "Opacity", &mut st.opacity);
+        }
+        0 => {
+            let b = &mut s.bevel;
+            c |= toggle_row(ui, "Enabled", &mut b.enabled);
+            egui::ComboBox::from_id_salt("bevel-style").selected_text(b.style.label()).show_ui(ui, |ui| {
+                for st in BevelStyle::ALL {
+                    c |= ui.selectable_value(&mut b.style, st, st.label()).changed();
+                }
+            });
+            c |= segmented(ui, &mut b.up, &[(true, "Up"), (false, "Down")]);
+            c |= slider_row(ui, "Depth", &mut b.depth, 1.0..=1000.0, "%", 0);
+            c |= slider_row(ui, "Size", &mut b.size, 1.0..=250.0, " px", 0);
+            c |= slider_row(ui, "Soften", &mut b.soften, 0.0..=16.0, " px", 0);
+            c |= slider_row(ui, "Angle", &mut b.angle, -180.0..=180.0, "°", 0);
+            c |= slider_row(ui, "Altitude", &mut b.altitude, 0.0..=90.0, "°", 0);
+            c |= color(ui, "Highlight", &mut b.highlight);
+            c |= crate::widgets::slider_row_pct(ui, "Opacity", &mut b.highlight_opacity);
+            c |= color(ui, "Shadow", &mut b.shadow);
+            c |= crate::widgets::slider_row_pct(ui, "Opacity ", &mut b.shadow_opacity);
+        }
+        4 => {
+            let sa = &mut s.satin;
+            c |= toggle_row(ui, "Enabled", &mut sa.enabled);
+            c |= color(ui, "Color", &mut sa.color);
+            c |= crate::widgets::slider_row_pct(ui, "Opacity", &mut sa.opacity);
+            c |= slider_row(ui, "Angle", &mut sa.angle, -180.0..=180.0, "°", 0);
+            c |= slider_row(ui, "Distance", &mut sa.distance, 1.0..=250.0, " px", 0);
+            c |= slider_row(ui, "Size", &mut sa.size, 0.0..=250.0, " px", 0);
+            c |= toggle_row(ui, "Invert", &mut sa.invert);
+        }
+        6 => {
+            let go = &mut s.gradient_overlay;
+            c |= toggle_row(ui, "Enabled", &mut go.enabled);
+            c |= blend(ui, &mut go.blend);
+            ui.horizontal_wrapped(|ui| {
+                for (name, g) in studio_core::gradient::Gradient::presets(Rgba::BLACK, Rgba::WHITE) {
+                    if ui.small_button(name).clicked() {
+                        go.gradient = g;
+                        c = true;
+                    }
+                }
+            });
+            for (i, stop) in go.gradient.stops.iter_mut().enumerate() {
+                c |= color(ui, &format!("Stop {}", i + 1), &mut stop.color);
+            }
+            egui::ComboBox::from_id_salt("go-shape").selected_text(go.shape.label()).show_ui(ui, |ui| {
+                for sh in studio_core::gradient::GradientShape::ALL {
+                    c |= ui.selectable_value(&mut go.shape, sh, sh.label()).changed();
+                }
+            });
+            c |= slider_row(ui, "Angle", &mut go.angle, -180.0..=180.0, "°", 0);
+            c |= slider_row(ui, "Scale", &mut go.scale, 10.0..=150.0, "%", 0);
+            c |= toggle_row(ui, "Reverse", &mut go.reverse);
+            c |= crate::widgets::slider_row_pct(ui, "Opacity", &mut go.opacity);
+        }
+        7 => {
+            let po = &mut s.pattern_overlay;
+            c |= toggle_row(ui, "Enabled", &mut po.enabled);
+            c |= blend(ui, &mut po.blend);
+            let names: Vec<&str> = studio_core::paint::builtin_patterns(po.fg, po.bg).iter().map(|p| p.0).collect();
+            egui::ComboBox::from_id_salt("po-pattern")
+                .selected_text(names.get(po.pattern).copied().unwrap_or(""))
+                .show_ui(ui, |ui| {
+                    for (i, n) in names.iter().enumerate() {
+                        c |= ui.selectable_value(&mut po.pattern, i, *n).changed();
+                    }
+                });
+            c |= color(ui, "Foreground", &mut po.fg);
+            c |= color(ui, "Background", &mut po.bg);
+            c |= slider_row(ui, "Scale", &mut po.scale, 10.0..=1000.0, "%", 0);
+            c |= crate::widgets::slider_row_pct(ui, "Opacity", &mut po.opacity);
         }
         _ => {
             let co = &mut s.color_overlay;

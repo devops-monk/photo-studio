@@ -468,3 +468,31 @@ fn merge_group_with_cmd_e() {
     assert!(!doc.layers[1].is_group());
     assert_eq!(h.state().tab().unwrap().history.undo_label(), Some("Merge Down"));
 }
+
+/// Offscreen screenshots of the real UI (no window needed):
+/// `PHOTO_STUDIO_SAMPLE=img.jpg PHOTO_STUDIO_SHOTS=out/ cargo test -p photo-studio screenshots -- --ignored`
+#[test]
+#[ignore]
+fn screenshots() {
+    let sample = std::env::var("PHOTO_STUDIO_SAMPLE").expect("PHOTO_STUDIO_SAMPLE");
+    let out = std::path::PathBuf::from(std::env::var("PHOTO_STUDIO_SHOTS").unwrap_or_else(|_| ".".into()));
+    std::fs::create_dir_all(&out).unwrap();
+    for (name, variant, theme) in
+        [("demo", "1", "dark"), ("styles", "styles", "dark"), ("filter", "filter", "dark"), ("light", "1", "light")]
+    {
+        let mut h = Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .with_pixels_per_point(2.0)
+            .wgpu()
+            .build_eframe(|cc| App::new(cc, vec![std::path::PathBuf::from(&sample)]));
+        let ctx = h.ctx.clone();
+        let app = h.state_mut();
+        app.prefs.theme = if theme == "light" { crate::theme::ThemeMode::Light } else { crate::theme::ThemeMode::Dark };
+        crate::theme::apply(&ctx, app.prefs.theme);
+        h.run_steps(4);
+        crate::shell::build_demo(h.state_mut(), &ctx, variant);
+        h.run_steps(8);
+        let img = h.render().expect("render");
+        img.save(out.join(format!("{name}.png"))).unwrap();
+    }
+}

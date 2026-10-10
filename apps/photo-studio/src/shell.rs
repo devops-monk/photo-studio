@@ -883,9 +883,15 @@ fn demo_hook(app: &mut App, ctx: &egui::Context) {
             crate::theme::apply(ctx, app.prefs.theme);
         }
     }
-    if std::env::var_os("PHOTO_STUDIO_DEMO").is_none() || ctx.cumulative_frame_nr() != 5 || app.docs.is_empty() {
+    let Ok(variant) = std::env::var("PHOTO_STUDIO_DEMO") else { return };
+    if ctx.cumulative_frame_nr() != 5 || app.docs.is_empty() {
         return;
     }
+    build_demo(app, ctx, &variant);
+}
+
+/// A small composition on the open image, used for screenshots and UI checks.
+pub fn build_demo(app: &mut App, ctx: &egui::Context, variant: &str) {
     use studio_core::adjust::{Adjustment, Curve, LevelsChannel};
     use studio_core::layer::LayerKind;
     let curves = Adjustment::Curves {
@@ -907,6 +913,15 @@ fn demo_hook(app: &mut App, ctx: &egui::Context) {
     tab.doc.layers[i].styles.drop_shadow.enabled = true;
     tab.doc.layers[i].styles.stroke.enabled = true;
     tab.doc.layers[i].styles.stroke.size = 2.0;
+    if variant == "styles" {
+        let st = &mut tab.doc.layers[i].styles;
+        st.stroke.enabled = false;
+        st.bevel.enabled = true;
+        st.bevel.size = 4.0;
+        st.gradient_overlay.enabled = true;
+        st.gradient_overlay.gradient =
+            studio_core::gradient::Gradient::presets(studio_core::Rgba::BLACK, studio_core::Rgba::WHITE)[4].1.clone();
+    }
     let shape = studio_core::shape::ShapeLayer {
         kind: studio_core::shape::ShapeKind::RoundedRect { radius: 18.0 },
         from: (w * 0.5, h * 0.05),
@@ -928,7 +943,7 @@ fn demo_hook(app: &mut App, ctx: &egui::Context) {
         studio_core::select::ellipse_mask(tab.doc.width, tab.doc.height, (w * 0.55, h * 0.45), (w * 0.85, h * 0.85));
     tab.doc.set_selection(sel);
     tab.commit("Demo");
-    if std::env::var("PHOTO_STUDIO_DEMO").as_deref() == Ok("filter") {
+    if variant == "filter" {
         tab.doc.active = 0;
         app.run(ctx, Action::Filter(studio_core::filters::Filter::Twirl { angle: 220.0 }));
     }
