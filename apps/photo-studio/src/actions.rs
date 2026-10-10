@@ -5,7 +5,7 @@ use studio_core::adjust::Adjustment;
 use studio_core::filters::Filter;
 use studio_core::transform::Rotation;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Action {
     // File
     New,
@@ -46,6 +46,15 @@ pub enum Action {
     Preferences,
     // Image
     Adjust(Adjustment),
+    /// Apply with these exact settings, no dialog (recorded in Actions).
+    ApplyAdjustment(Adjustment),
+    ApplyFilter(Filter),
+    ResizeImage(u32, u32),
+    StartRecording,
+    StopRecording,
+    PlayMacro(usize),
+    DeleteMacro(usize),
+    Batch,
     AutoTone,
     AutoContrast,
     AutoColor,
@@ -135,7 +144,7 @@ pub enum Action {
     BrushLarger,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ModifyKind {
     Feather,
     Expand,

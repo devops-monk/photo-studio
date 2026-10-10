@@ -744,3 +744,51 @@ fn vertical_type_option() {
     let ink = doc.layers[1].pixels.opaque_bounds().unwrap();
     assert!(ink.h > ink.w * 2, "{ink:?}");
 }
+
+#[test]
+fn record_play_and_batch_actions() {
+    use crate::actions::Action;
+    let mut h = harness();
+    let ctx = h.ctx.clone();
+    let app = h.state_mut();
+    app.run(&ctx, Action::StartRecording);
+    app.run(&ctx, Action::ApplyAdjustment(studio_core::Adjustment::Invert));
+    app.run(&ctx, Action::RotateCanvas(studio_core::transform::Rotation::Cw90));
+    app.run(&ctx, Action::Undo); // not recorded
+    app.run(&ctx, Action::RotateCanvas(studio_core::transform::Rotation::Cw90));
+    app.run(&ctx, Action::StopRecording);
+    assert_eq!(app.prefs.macros.len(), 1);
+    assert_eq!(app.prefs.macros[0].1.len(), 3, "{:?}", app.prefs.macros[0].1);
+
+    // Play on a fresh white image.
+    let mut tab = DocTab::new(Document::new(40, 20, Some(Rgba::WHITE)), "t".into(), None);
+    tab.mark_saved();
+    app.add_doc(tab);
+    app.run(&ctx, Action::PlayMacro(0));
+    let doc = &app.tab().unwrap().doc;
+    // Undo isn't recorded, so both 90° turns replay: the image ends up upright again.
+    assert_eq!((doc.width, doc.height), (40, 20), "rotated twice");
+    assert_eq!(doc.layers[0].pixels.get(5, 5), Rgba::BLACK, "inverted");
+
+    // Batch over a folder.
+    let dir = std::env::temp_dir().join(format!("ps-batch-{}", std::process::id()));
+    let (src, dst) = (dir.join("in"), dir.join("out"));
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::create_dir_all(&dst).unwrap();
+    for n in ["a", "b"] {
+        let img = studio_core::Image::filled(10, 6, Rgba::WHITE);
+        std::fs::write(
+            src.join(format!("{n}.png")),
+            studio_core::io::encode(&img, "png", &Default::default()).unwrap(),
+        )
+        .unwrap();
+    }
+    let docs_before = app.docs.len();
+    let (ok, bad) = crate::app::run_batch(app, &ctx, 0, &src, &dst, "png");
+    assert_eq!((ok, bad), (2, 0));
+    assert_eq!(app.docs.len(), docs_before, "batch leaves tabs as they were");
+    let out = studio_core::io::read_image(&dst.join("a.png")).unwrap();
+    assert_eq!(out.size(), (10, 6));
+    assert_eq!(out.get(1, 1), Rgba::BLACK);
+    std::fs::remove_dir_all(&dir).ok();
+}

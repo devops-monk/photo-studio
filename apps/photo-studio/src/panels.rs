@@ -36,6 +36,7 @@ pub fn dock(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     card(ui, "hist", "Histogram", false, |ui| histogram(app, ui));
                 }
                 card(ui, "color", "Color", true, |ui| color_panel(app, ui));
+                card(ui, "actions", "Actions", false, |ui| actions_panel(app, ui, actions));
                 if !app.docs.is_empty() {
                     card(ui, "adj", "Adjustments", true, |ui| adjustments(ui, actions));
                     properties(app, ui);
@@ -535,6 +536,44 @@ fn channels_panel(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
     }
     if ui.button(format!("{} Save Selection", ph::FLOPPY_DISK)).clicked() {
         actions.push(Action::SaveSelection);
+    }
+}
+
+fn actions_panel(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
+    let t = Tokens::get(ui.ctx());
+    ui.horizontal(|ui| match &app.recording {
+        Some(steps) => {
+            ui.label(egui::RichText::new(format!("{} Recording · {} steps", ph::RECORD, steps.len())).color(t.danger));
+            if ui.button(format!("{} Stop", ph::STOP)).clicked() {
+                actions.push(Action::StopRecording);
+            }
+        }
+        None => {
+            if ui.button(egui::RichText::new(format!("{} Record", ph::RECORD)).color(t.danger)).clicked() {
+                actions.push(Action::StartRecording);
+            }
+            if ui.button(format!("{} Batch…", ph::FOLDERS)).clicked() {
+                actions.push(Action::Batch);
+            }
+        }
+    });
+    if app.prefs.macros.is_empty() {
+        label_dim(ui, "Record a sequence of edits, then replay it on any image or a whole folder.");
+    }
+    for (i, (name, steps)) in app.prefs.macros.iter().enumerate() {
+        let summary: Vec<String> = steps.iter().map(crate::menus::action_label).collect();
+        ui.horizontal(|ui| {
+            ui.label(format!("{}  {name}", ph::PLAY_CIRCLE)).on_hover_text(summary.join("\n"));
+            label_dim(ui, format!("{} steps", steps.len()));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if small_button(ui, ph::TRASH, "Delete").clicked() {
+                    actions.push(Action::DeleteMacro(i));
+                }
+                if small_button(ui, ph::PLAY, "Play on this image").clicked() {
+                    actions.push(Action::PlayMacro(i));
+                }
+            });
+        });
     }
 }
 

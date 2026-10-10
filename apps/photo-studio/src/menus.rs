@@ -58,6 +58,14 @@ pub fn action_label(a: &Action) -> String {
         Action::RotateLayer(Rotation::Half) => "Rotate 180°".into(),
         Action::Preferences => "Preferences…".into(),
         Action::Adjust(a) => format!("{}…", a.label()),
+        Action::ApplyAdjustment(a) => a.label().into(),
+        Action::ApplyFilter(f) => f.label().into(),
+        Action::ResizeImage(w, h) => format!("Image Size {w} × {h}"),
+        Action::StartRecording => "Start Recording".into(),
+        Action::StopRecording => "Stop Recording".into(),
+        Action::PlayMacro(_) => "Play Action".into(),
+        Action::DeleteMacro(_) => "Delete Action".into(),
+        Action::Batch => "Batch…".into(),
         Action::AutoTone => "Auto Tone".into(),
         Action::AutoContrast => "Auto Contrast".into(),
         Action::AutoColor => "Auto Color".into(),
@@ -201,6 +209,14 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             ui.separator();
             item(ui, out, Action::ExportAs, doc);
             item(ui, out, Action::QuickExportPng, doc);
+            ui.menu_button("Automate", |ui| {
+                item(ui, out, Action::Batch, true);
+                if app.recording.is_some() {
+                    item(ui, out, Action::StopRecording, true);
+                } else {
+                    item(ui, out, Action::StartRecording, true);
+                }
+            });
             ui.separator();
             item(ui, out, Action::Quit, true);
         });

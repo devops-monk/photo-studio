@@ -31,6 +31,8 @@ pub struct Prefs {
     pub swatches: Vec<Rgba>,
     pub last_dir: Option<PathBuf>,
     pub show_welcome_animation: bool,
+    /// Recorded Actions: name and steps.
+    pub macros: Vec<(String, Vec<Action>)>,
     pub show_rulers: bool,
     pub show_guides: bool,
     pub show_grid: bool,
@@ -52,6 +54,7 @@ impl Default for Prefs {
             swatches: Vec::new(),
             last_dir: None,
             show_welcome_animation: true,
+            macros: Vec::new(),
             show_rulers: true,
             show_guides: true,
             show_grid: false,
@@ -113,6 +116,8 @@ pub struct App {
     pub edit_mask: bool,
     /// Quick Mask mode: painting edits the selection.
     pub quick_mask: bool,
+    /// Steps captured while recording an Action.
+    pub recording: Option<Vec<Action>>,
     pub show_edges: bool,
     pub props_pending: Option<(f64, &'static str)>,
     pub last_title: String,
@@ -151,6 +156,7 @@ impl App {
             props: ParamState::default(),
             edit_mask: false,
             quick_mask: false,
+            recording: None,
             show_edges: true,
             props_pending: None,
             last_title: String::new(),
@@ -596,9 +602,30 @@ impl App {
         }
     }
 
+    /// Add a step to the Action being recorded.
+    pub fn record(&mut self, a: Action) {
+        if let Some(steps) = &mut self.recording {
+            steps.push(a);
+        }
+    }
+
+    /// Run every step of a recorded Action on the active document.
+    pub fn play(&mut self, ctx: &egui::Context, steps: &[Action]) {
+        let recording = self.recording.take();
+        for s in steps {
+            self.run(ctx, s.clone());
+        }
+        self.recording = recording;
+        // Steps that would have opened dialogs were recorded as direct applications.
+        self.dialog = None;
+    }
+
     /// Dispatch a command.
     pub fn run(&mut self, ctx: &egui::Context, a: Action) {
         let has_doc = !self.docs.is_empty();
+        if self.recording.is_some() && recordable(&a) {
+            self.record(a.clone());
+        }
         match a {
             Action::New => self.dialog = Some(Dialog::new_document(self.clipboard_size())),
             Action::NewFromClipboard => {
@@ -729,6 +756,46 @@ impl App {
                 });
             }
             Action::Preferences => self.dialog = Some(Dialog::Preferences),
+            Action::ApplyAdjustment(adj) => self.apply_adjustment_now(ctx, adj),
+            Action::ApplyFilter(f) => self.apply_filter_now(ctx, f),
+            Action::ResizeImage(w, h) => {
+                self.edit("Image Size", |d| d.resize_image(w, h, studio_core::transform::Resample::Bicubic))
+            }
+            Action::StartRecording => {
+                self.recording = Some(Vec::new());
+                self.notify(ctx, "Recording — edits are captured until you press Stop");
+            }
+            Action::StopRecording => {
+                if let Some(steps) = self.recording.take() {
+                    if steps.is_empty() {
+                        self.notify(ctx, "Nothing was recorded");
+                    } else {
+                        let name = format!("Action {}", self.prefs.macros.len() + 1);
+                        let n = steps.len();
+                        self.prefs.macros.push((name.clone(), steps));
+                        self.notify(ctx, format!("Saved “{name}” ({n} steps)"));
+                    }
+                }
+            }
+            Action::PlayMacro(i) => {
+                if let Some((_, steps)) = self.prefs.macros.get(i).cloned() {
+                    if has_doc {
+                        self.play(ctx, &steps);
+                    }
+                }
+            }
+            Action::DeleteMacro(i) => {
+                if i < self.prefs.macros.len() {
+                    self.prefs.macros.remove(i);
+                }
+            }
+            Action::Batch => {
+                if self.prefs.macros.is_empty() {
+                    self.notify(ctx, "Record an Action first (Window › Actions)");
+                } else {
+                    self.dialog = Some(Dialog::Batch { action: 0, format: 0 });
+                }
+            }
             Action::PathToSelection
             | Action::FillPath
             | Action::StrokePath
@@ -1267,6 +1334,41 @@ impl App {
     }
 }
 
+/// Commands that change the document without asking anything, so they replay as-is.
+fn recordable(a: &Action) -> bool {
+    matches!(
+        a,
+        Action::ApplyAdjustment(_)
+            | Action::ApplyFilter(_)
+            | Action::ResizeImage(..)
+            | Action::Adjust(Adjustment::Invert | Adjustment::Desaturate)
+            | Action::AutoTone
+            | Action::AutoContrast
+            | Action::AutoColor
+            | Action::Equalize
+            | Action::RotateCanvas(_)
+            | Action::FlipCanvas(_)
+            | Action::FlipLayer(_)
+            | Action::RotateLayer(_)
+            | Action::Trim
+            | Action::CropToSelection
+            | Action::SelectAll
+            | Action::Deselect
+            | Action::InverseSelection
+            | Action::SelectSubject
+            | Action::NewLayer
+            | Action::DuplicateLayer
+            | Action::MergeVisible
+            | Action::MergeDown
+            | Action::Flatten
+            | Action::Clear
+            | Action::Rasterize
+            | Action::ConvertToSmart
+            | Action::NewAdjustmentLayer(_)
+            | Action::Align(..)
+    )
+}
+
 /// The pattern at `index`: built-ins first, then the user's defined pattern.
 pub fn pattern_at(custom: &Option<Image>, index: usize, fg: Rgba, bg: Rgba) -> Option<Image> {
     let mut all: Vec<Image> = studio_core::paint::builtin_patterns(fg, bg).into_iter().map(|p| p.1).collect();
@@ -1274,6 +1376,48 @@ pub fn pattern_at(custom: &Option<Image>, index: usize, fg: Rgba, bg: Rgba) -> O
         all.push(c.clone());
     }
     all.get(index).cloned().or_else(|| all.first().cloned())
+}
+
+/// Run recorded Action `index` on every image in `src`, saving to `dst` as `ext`.
+/// Returns (saved, failed).
+pub fn run_batch(
+    app: &mut App,
+    ctx: &egui::Context,
+    index: usize,
+    src: &Path,
+    dst: &Path,
+    ext: &str,
+) -> (usize, usize) {
+    let Some((_, steps)) = app.prefs.macros.get(index).cloned() else { return (0, 0) };
+    let mut files: Vec<PathBuf> =
+        std::fs::read_dir(src).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+    files.retain(|f| {
+        f.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| io::OPEN_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+    });
+    files.sort();
+    let (mut ok, mut bad) = (0, 0);
+    let active = app.active;
+    for f in files {
+        let Ok(doc) = io::open(&f) else {
+            bad += 1;
+            continue;
+        };
+        app.docs.push(DocTab::new(doc, String::new(), None));
+        app.active = app.docs.len() - 1;
+        app.play(ctx, &steps);
+        let stem = f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "image".into());
+        let out = dst.join(format!("{stem}.{ext}"));
+        let opts = io::ExportOptions { jpeg_quality: app.prefs.jpeg_quality, ..Default::default() };
+        match app.tab().map(|t| io::export(&t.doc, &out, &opts)) {
+            Some(Ok(())) => ok += 1,
+            _ => bad += 1,
+        }
+        app.docs.pop();
+    }
+    app.active = active.min(app.docs.len().saturating_sub(1));
+    (ok, bad)
 }
 
 impl eframe::App for App {

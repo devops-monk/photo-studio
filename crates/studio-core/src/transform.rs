@@ -80,7 +80,7 @@ pub fn resize_mask(m: &Mask, w: u32, h: u32, method: Resample) -> Mask {
     Mask::from_raw(w, h, out.into_raw())
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Rotation {
     Cw90,
     Ccw90,

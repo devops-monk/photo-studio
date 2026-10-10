@@ -63,6 +63,7 @@ pub enum Dialog {
     Stroke { width: f32, position: StrokePosition },
     LayerStyle { styles: LayerStyles, section: usize, pv: Preview },
     NewGuide { horizontal: bool, pos: f32 },
+    Batch { action: usize, format: usize },
     CommandPalette { query: String, selected: usize },
     Preferences,
     About,
@@ -408,6 +409,7 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
                     pv.dirty_at = Some(-1.0);
                     preview_apply(app, pv, now, |img, sel| adjust::apply(img, &a, sel));
                     commit(app, title);
+                    app.record(Action::ApplyAdjustment(a.clone()));
                     false
                 }
                 Some((_, true)) | None => {
@@ -464,6 +466,7 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
             match r {
                 Some((true, _)) => {
                     app.last_filter = Some(filter.clone());
+                    app.record(Action::ApplyFilter(filter.clone()));
                     // Smart objects get the filter as an editable smart filter.
                     let smart = app.tab().and_then(|t| t.doc.active_layer()).is_some_and(|l| l.is_smart());
                     if smart {
@@ -519,6 +522,7 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
             if ok && (*w, *h) != *orig {
                 let (nw, nh, m) = (*w, *h, *method);
                 app.edit("Image Size", |d| d.resize_image(nw, nh, m));
+                app.record(Action::ResizeImage(nw, nh));
                 if let Some(t) = app.tab_mut() {
                     t.fit_pending = true;
                 }
@@ -759,6 +763,40 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
                 _ => true,
             }
         }
+        Dialog::Batch { action, format } => modal(ctx, "batch", "Batch", 400.0, |ui| {
+            let names: Vec<String> = app.prefs.macros.iter().map(|m| m.0.clone()).collect();
+            *action = (*action).min(names.len().saturating_sub(1));
+            egui::Grid::new("batch").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
+                label_dim(ui, "Action");
+                egui::ComboBox::from_id_salt("batch-action")
+                    .selected_text(names.get(*action).cloned().unwrap_or_default())
+                    .show_ui(ui, |ui| {
+                        for (i, n) in names.iter().enumerate() {
+                            ui.selectable_value(action, i, n);
+                        }
+                    });
+                ui.end_row();
+                label_dim(ui, "Save as");
+                egui::ComboBox::from_id_salt("batch-fmt").selected_text(EXPORT_FORMATS[*format].0).show_ui(ui, |ui| {
+                    for (i, f) in EXPORT_FORMATS.iter().enumerate() {
+                        ui.selectable_value(format, i, f.0);
+                    }
+                });
+                ui.end_row();
+            });
+            label_dim(ui, "Pick a folder of images, then where to save the results.");
+            let (ok, cancel) = buttons(ui, "Choose Folders…");
+            if ok {
+                let src = rfd::FileDialog::new().set_title("Images to process").pick_folder();
+                let dst = src.as_ref().and_then(|_| rfd::FileDialog::new().set_title("Save results to").pick_folder());
+                if let (Some(src), Some(dst)) = (src, dst) {
+                    let ext = EXPORT_FORMATS[*format].1;
+                    let (done, failed) = crate::app::run_batch(app, ctx, *action, &src, &dst, ext);
+                    app.notify(ctx, format!("Batch finished: {done} saved, {failed} failed"));
+                }
+            }
+            !(ok || cancel)
+        }),
         Dialog::NewGuide { horizontal, pos } => modal(ctx, "new-guide", "New Guide", 320.0, |ui| {
             segmented(ui, horizontal, &[(true, "Horizontal"), (false, "Vertical")]);
             ui.add_space(4.0);
