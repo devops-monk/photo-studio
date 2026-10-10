@@ -528,7 +528,7 @@ pub fn psd_bytes(doc: &Document) -> Result<Vec<u8>> {
         }
         records.extend_from_slice(b"8BIM");
         records.extend_from_slice(match section {
-            Some((_, key)) if key == b"pass" => b"pass",
+            Some((_, b"pass")) => b"pass",
             _ => psd_blend_key(blend),
         });
         records.push((opacity.clamp(0.0, 1.0) * 255.0).round() as u8);
