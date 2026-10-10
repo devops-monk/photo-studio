@@ -33,6 +33,8 @@ pub fn action_label(a: &Action) -> String {
         Action::Fill => "Fill…".into(),
         Action::Stroke => "Stroke…".into(),
         Action::FreeTransform => "Free Transform".into(),
+        Action::DefinePattern => "Define Pattern".into(),
+        Action::Straighten => "Straighten with Ruler".into(),
         Action::FlipLayer(true) => "Flip Horizontal".into(),
         Action::FlipLayer(false) => "Flip Vertical".into(),
         Action::RotateLayer(Rotation::Cw90) => "Rotate 90° Clockwise".into(),
@@ -201,6 +203,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::Stroke, has_sel);
             ui.separator();
             item(ui, out, Action::FreeTransform, doc);
+            item(ui, out, Action::DefinePattern, has_sel);
             ui.menu_button("Transform", |ui| {
                 item(ui, out, Action::RotateLayer(Rotation::Half), doc);
                 item(ui, out, Action::RotateLayer(Rotation::Cw90), doc);

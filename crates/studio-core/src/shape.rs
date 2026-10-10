@@ -14,6 +14,11 @@ pub enum ShapeKind {
     Line,
     Polygon { sides: u32 },
     Star { points: u32, inner: f32 },
+    Triangle,
+    Heart,
+    Arrow,
+    SpeechBubble,
+    Checkmark,
 }
 
 impl ShapeKind {
@@ -25,6 +30,11 @@ impl ShapeKind {
             Self::Line => "Line",
             Self::Polygon { .. } => "Polygon",
             Self::Star { .. } => "Star",
+            Self::Triangle => "Triangle",
+            Self::Heart => "Heart",
+            Self::Arrow => "Arrow",
+            Self::SpeechBubble => "Speech Bubble",
+            Self::Checkmark => "Checkmark",
         }
     }
 }
@@ -98,6 +108,65 @@ pub fn path(kind: ShapeKind, a: (f32, f32), b: (f32, f32)) -> Option<tiny_skia::
                 let k = if i % 2 == 0 { 1.0 } else { inner.clamp(0.05, 1.0) };
                 let (x, y) = (cx + rx * k * t.cos(), cy + ry * k * t.sin());
                 if i == 0 { pb.move_to(x, y) } else { pb.line_to(x, y) }
+            }
+            pb.close();
+        }
+        ShapeKind::Triangle => {
+            pb.move_to(cx, y0);
+            pb.line_to(x1, y1);
+            pb.line_to(x0, y1);
+            pb.close();
+        }
+        ShapeKind::Heart => {
+            let (w, h) = (x1 - x0, y1 - y0);
+            let p = |u: f32, v: f32| (x0 + u * w, y0 + v * h);
+            let m = |pb: &mut PathBuilder, a: (f32, f32)| pb.move_to(a.0, a.1);
+            m(&mut pb, p(0.5, 0.25));
+            let c = |pb: &mut PathBuilder, a: (f32, f32), b: (f32, f32), e: (f32, f32)| {
+                pb.cubic_to(a.0, a.1, b.0, b.1, e.0, e.1)
+            };
+            c(&mut pb, p(0.5, 0.0), p(0.0, 0.0), p(0.0, 0.3));
+            c(&mut pb, p(0.0, 0.6), p(0.4, 0.75), p(0.5, 1.0));
+            c(&mut pb, p(0.6, 0.75), p(1.0, 0.6), p(1.0, 0.3));
+            c(&mut pb, p(1.0, 0.0), p(0.5, 0.0), p(0.5, 0.25));
+            pb.close();
+        }
+        ShapeKind::Arrow => {
+            let (w, h) = (x1 - x0, y1 - y0);
+            let p = |u: f32, v: f32| (x0 + u * w, y0 + v * h);
+            let pts = [p(0.0, 0.3), p(0.6, 0.3), p(0.6, 0.0), p(1.0, 0.5), p(0.6, 1.0), p(0.6, 0.7), p(0.0, 0.7)];
+            pb.move_to(pts[0].0, pts[0].1);
+            for q in &pts[1..] {
+                pb.line_to(q.0, q.1);
+            }
+            pb.close();
+        }
+        ShapeKind::SpeechBubble => {
+            let (w, h) = (x1 - x0, y1 - y0);
+            let body = y0 + h * 0.78;
+            let r = (w.min(h) * 0.18).min((body - y0) / 2.0);
+            let k = 0.552_284_8 * r;
+            pb.move_to(x0 + r, y0);
+            pb.line_to(x1 - r, y0);
+            pb.cubic_to(x1 - r + k, y0, x1, y0 + r - k, x1, y0 + r);
+            pb.line_to(x1, body - r);
+            pb.cubic_to(x1, body - r + k, x1 - r + k, body, x1 - r, body);
+            pb.line_to(x0 + w * 0.42, body);
+            pb.line_to(x0 + w * 0.22, y1);
+            pb.line_to(x0 + w * 0.26, body);
+            pb.line_to(x0 + r, body);
+            pb.cubic_to(x0 + r - k, body, x0, body - r + k, x0, body - r);
+            pb.line_to(x0, y0 + r);
+            pb.cubic_to(x0, y0 + r - k, x0 + r - k, y0, x0 + r, y0);
+            pb.close();
+        }
+        ShapeKind::Checkmark => {
+            let (w, h) = (x1 - x0, y1 - y0);
+            let p = |u: f32, v: f32| (x0 + u * w, y0 + v * h);
+            let pts = [p(0.0, 0.55), p(0.15, 0.4), p(0.38, 0.62), p(0.85, 0.05), p(1.0, 0.2), p(0.38, 0.92)];
+            pb.move_to(pts[0].0, pts[0].1);
+            for q in &pts[1..] {
+                pb.line_to(q.0, q.1);
             }
             pb.close();
         }
@@ -205,6 +274,11 @@ mod tests {
             ShapeKind::Line,
             ShapeKind::Polygon { sides: 6 },
             ShapeKind::Star { points: 5, inner: 0.5 },
+            ShapeKind::Triangle,
+            ShapeKind::Heart,
+            ShapeKind::Arrow,
+            ShapeKind::SpeechBubble,
+            ShapeKind::Checkmark,
         ] {
             assert!(path(k, (1.0, 1.0), (30.0, 20.0)).is_some(), "{}", k.label());
         }

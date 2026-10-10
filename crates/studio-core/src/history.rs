@@ -71,6 +71,11 @@ impl History {
         self.states.iter().map(|(l, _)| l.as_str())
     }
 
+    /// The oldest recorded state (the History Brush paints from it).
+    pub fn first_state(&self) -> &DocState {
+        &self.states[0].1
+    }
+
     pub fn current(&self) -> usize {
         self.current
     }

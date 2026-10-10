@@ -94,6 +94,8 @@ pub struct App {
     pub last_title: String,
     pub logo: crate::welcome::LogoAnim,
     pub show_right_panel: bool,
+    /// Edit › Define Pattern.
+    pub custom_pattern: Option<Image>,
 }
 
 impl App {
@@ -126,6 +128,7 @@ impl App {
             last_title: String::new(),
             logo: crate::welcome::LogoAnim::default(),
             show_right_panel: true,
+            custom_pattern: None,
         };
         app.prefs.recent.retain(|p| p.exists());
         for f in files {
@@ -615,6 +618,39 @@ impl App {
                 });
             }
             Action::Preferences => self.dialog = Some(Dialog::Preferences),
+            Action::DefinePattern => {
+                let Some(tab) = self.tab() else { return };
+                let Some(b) = tab.doc.selection.as_ref().and_then(|m| m.bounds()) else {
+                    self.notify(ctx, "Select an area to use as a pattern");
+                    return;
+                };
+                if b.w > 1024 || b.h > 1024 {
+                    self.notify(ctx, "Patterns can be at most 1024 × 1024 px");
+                    return;
+                }
+                self.custom_pattern = Some(tab.composite.crop(b));
+                self.opts.pattern = studio_core::paint::builtin_patterns(self.fg, self.bg).len();
+                self.notify(ctx, format!("Pattern defined ({} × {})", b.w, b.h));
+            }
+            Action::Straighten => {
+                let Some((a, b)) = self.cv.ruler else { return };
+                let mut angle = (b.1 - a.1).atan2(b.0 - a.0).to_degrees();
+                // Level whichever axis the line is closest to.
+                if angle.abs() > 45.0 && angle.abs() < 135.0 {
+                    angle -= 90.0 * angle.signum();
+                } else if angle.abs() >= 135.0 {
+                    angle -= 180.0 * angle.signum();
+                }
+                if angle.abs() > 0.01 {
+                    self.edit("Straighten", |d| {
+                        d.rotate_arbitrary(-angle);
+                    });
+                    self.cv.ruler = None;
+                    if let Some(t) = self.tab_mut() {
+                        t.fit_pending = true;
+                    }
+                }
+            }
             Action::Adjust(adj) => {
                 if has_doc {
                     if matches!(adj, Adjustment::Invert | Adjustment::Desaturate) {
@@ -993,6 +1029,15 @@ impl App {
         self.prefs.swatches.insert(0, c);
         self.prefs.swatches.truncate(24);
     }
+}
+
+/// The pattern at `index`: built-ins first, then the user's defined pattern.
+pub fn pattern_at(custom: &Option<Image>, index: usize, fg: Rgba, bg: Rgba) -> Option<Image> {
+    let mut all: Vec<Image> = studio_core::paint::builtin_patterns(fg, bg).into_iter().map(|p| p.1).collect();
+    if let Some(c) = custom {
+        all.push(c.clone());
+    }
+    all.get(index).cloned().or_else(|| all.first().cloned())
 }
 
 impl eframe::App for App {

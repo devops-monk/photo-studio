@@ -70,6 +70,17 @@ enum Params {
     Rasterize,
 }
 
+impl DocState {
+    /// A layer as it was in this state.
+    pub fn layer(&self, id: LayerId) -> Option<&Layer> {
+        self.layers.iter().find(|l| l.id == id)
+    }
+
+    pub fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+}
+
 impl Document {
     /// A new document with a "Background" layer filled with `bg`, or a transparent "Layer 1".
     pub fn new(width: u32, height: u32, bg: Option<Rgba>) -> Self {

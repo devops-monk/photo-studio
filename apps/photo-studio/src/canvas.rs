@@ -143,6 +143,8 @@ pub struct CanvasState {
     pub clone_source: Option<(f32, f32)>,
     clone_offset: Option<(f32, f32)>,
     pub hover: Option<(f32, f32)>,
+    /// Ruler tool measurement, canvas coordinates.
+    pub ruler: Option<((f32, f32), (f32, f32))>,
     last_paint: Option<(f32, f32)>,
 }
 
@@ -158,6 +160,7 @@ impl Default for CanvasState {
             clone_source: None,
             clone_offset: None,
             hover: None,
+            ruler: None,
             last_paint: None,
         }
     }
@@ -367,6 +370,36 @@ fn begin_stroke(app: &mut App, ctx: &egui::Context, p: (f32, f32)) -> bool {
             } else {
                 (StrokeKind::Clone { source, offset }, "Clone Stamp", tip)
             }
+        }
+        Tool::PatternStamp => {
+            let Some(pattern) = crate::app::pattern_at(&app.custom_pattern, opts.pattern, fg, bg) else {
+                return false;
+            };
+            (StrokeKind::Pattern { pattern }, "Pattern Stamp", tip)
+        }
+        Tool::HistoryBrush => {
+            let first = tab.history.first_state();
+            let source = match first.layer(layer.id) {
+                Some(l) if l.pixels.size() == target_img.size() => l.pixels.clone(),
+                _ => {
+                    app.toast =
+                        Some(("This layer didn't exist when the document was opened".into(), ctx.input(|i| i.time)));
+                    return false;
+                }
+            };
+            (StrokeKind::Clone { source, offset: (0.0, 0.0) }, "History Brush", tip)
+        }
+        Tool::BackgroundEraser => {
+            let (x, y) = (
+                p.0.clamp(0.0, target_img.width() as f32 - 1.0) as u32,
+                p.1.clamp(0.0, target_img.height() as f32 - 1.0) as u32,
+            );
+            let c = target_img.get(x, y);
+            (
+                StrokeKind::BackgroundErase { sample: [c.r(), c.g(), c.b()], tolerance: opts.tolerance },
+                "Background Eraser",
+                opts.eraser_tip,
+            )
         }
         Tool::SpotHeal => {
             let offset = paint::spot_heal_offset(&target_img, p.0, p.1, tip.size);
@@ -624,6 +657,73 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                 }
             }
         }
+        Tool::MagicEraser => {
+            if resp.clicked() {
+                let Some(src) = sample_source(app) else {
+                    return;
+                };
+                if p.0 < 0.0 || p.1 < 0.0 || p.0 >= src.width() as f32 || p.1 >= src.height() as f32 {
+                    return;
+                }
+                let o = app.opts.clone();
+                let region = select::flood_mask(&src, p.0 as u32, p.1 as u32, o.tolerance, o.contiguous, o.anti_alias);
+                app.edit_pixels(ctx, "Magic Eraser", |img, sel| {
+                    let region = match sel {
+                        Some(s) => select::combine(Some(s), region.clone(), SelectOp::Intersect),
+                        None => region.clone(),
+                    };
+                    img.clear(Some(&region));
+                });
+            }
+        }
+        Tool::RedEye => {
+            if primary_pressed && resp.drag_started() {
+                app.cv.drag = Some(Drag::Marquee {
+                    start: origin,
+                    cur: p,
+                    op: SelectOp::Replace,
+                    ellipse: true,
+                    constrain: false,
+                });
+            }
+            let finished = match &mut app.cv.drag {
+                Some(Drag::Marquee { cur, .. }) => {
+                    *cur = p;
+                    resp.drag_stopped()
+                }
+                _ => false,
+            };
+            let area = if finished {
+                let Some(Drag::Marquee { start, cur, .. }) = app.cv.drag.take() else { unreachable!() };
+                Some(Rect::from_points(start, cur))
+            } else if resp.clicked() {
+                let r = (24.0 / view.zoom).max(6.0);
+                Some(Rect::from_points((p.0 - r, p.1 - r), (p.0 + r, p.1 + r)))
+            } else {
+                None
+            };
+            if let Some(a) = area {
+                let darken = app.opts.red_eye_darken;
+                app.edit_pixels(ctx, "Red Eye", |img, _| paint::red_eye(img, a, darken));
+            }
+        }
+        Tool::Ruler => {
+            if primary_pressed && resp.drag_started() {
+                app.cv.ruler = Some((origin, p));
+            }
+            if resp.dragged() {
+                if let Some(r) = &mut app.cv.ruler {
+                    let mut end = p;
+                    if mods.shift {
+                        let (dx, dy) = (p.0 - r.0.0, p.1 - r.0.1);
+                        let a = (dy.atan2(dx) / (std::f32::consts::PI / 4.0)).round() * std::f32::consts::PI / 4.0;
+                        let l = dx.hypot(dy);
+                        end = (r.0.0 + l * a.cos(), r.0.1 + l * a.sin());
+                    }
+                    r.1 = end;
+                }
+            }
+        }
         Tool::Bucket => {
             if resp.clicked() {
                 let Some(src) = sample_source(app) else {
@@ -826,7 +926,17 @@ fn handle_tool(app: &mut App, ctx: &egui::Context, resp: &egui::Response, view: 
                 app.edit_mask = false;
             }
         }
-        Tool::Rectangle | Tool::RoundedRect | Tool::Ellipse | Tool::Polygon | Tool::Star | Tool::Line => {
+        Tool::Rectangle
+        | Tool::RoundedRect
+        | Tool::Ellipse
+        | Tool::Triangle
+        | Tool::Polygon
+        | Tool::Star
+        | Tool::Line
+        | Tool::Heart
+        | Tool::Arrow
+        | Tool::SpeechBubble
+        | Tool::Checkmark => {
             if primary_pressed && resp.drag_started() {
                 let o = &app.opts;
                 let kind = tool.shape_kind(o).unwrap();
@@ -1237,6 +1347,22 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
         let (cx, cy) = ts.center();
         painter.circle_stroke(view.to_screen((cx + ts.tx, cy + ts.ty)), 4.0, Stroke::new(1.5, t.accent));
     }
+    if let (Some((a, b)), Tool::Ruler) = (app.cv.ruler, app.tool) {
+        let (sa, sb) = (view.to_screen(a), view.to_screen(b));
+        painter.line_segment([sa, sb], Stroke::new(3.0, Color32::from_black_alpha(150)));
+        painter.line_segment([sa, sb], Stroke::new(1.5, Color32::WHITE));
+        for q in [sa, sb] {
+            painter.circle(q, 3.5, t.accent, Stroke::new(1.5, Color32::WHITE));
+        }
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        painter.text(
+            sb + Vec2::new(10.0, -10.0),
+            egui::Align2::LEFT_BOTTOM,
+            format!("{:.1} px  ·  {:.1}°", dx.hypot(dy), -dy.atan2(dx).to_degrees()),
+            egui::FontId::proportional(12.0),
+            Color32::WHITE,
+        );
+    }
     if let Some(src) = app.cv.clone_source {
         if matches!(app.tool, Tool::CloneStamp | Tool::Heal) {
             let s = view.to_screen(src);
@@ -1248,7 +1374,11 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
     // Brush outline.
     if let Some(p) = pointer.filter(|p| painter.clip_rect().contains(*p)) {
         if app.tool.uses_brush() && app.tool != Tool::QuickSelect && app.cv.transform.is_none() {
-            let size = if app.tool == Tool::Eraser { app.opts.eraser_tip.size } else { app.opts.tip.size };
+            let size = if matches!(app.tool, Tool::Eraser | Tool::BackgroundEraser) {
+                app.opts.eraser_tip.size
+            } else {
+                app.opts.tip.size
+            };
             let r = (size * view.zoom / 2.0).max(1.5);
             painter.circle_stroke(p, r, Stroke::new(1.0, Color32::from_black_alpha(200)));
             painter.circle_stroke(p, r + 1.0, Stroke::new(1.0, Color32::from_white_alpha(200)));

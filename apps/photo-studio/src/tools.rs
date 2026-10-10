@@ -19,12 +19,18 @@ pub enum Tool {
     MagicWand,
     Crop,
     Eyedropper,
+    Ruler,
     SpotHeal,
     Heal,
+    RedEye,
     Brush,
     Pencil,
     CloneStamp,
+    PatternStamp,
+    HistoryBrush,
     Eraser,
+    BackgroundEraser,
+    MagicEraser,
     Gradient,
     Bucket,
     Blur,
@@ -39,6 +45,11 @@ pub enum Tool {
     Ellipse,
     Polygon,
     Star,
+    Triangle,
+    Heart,
+    Arrow,
+    SpeechBubble,
+    Checkmark,
     Line,
     Hand,
     Zoom,
@@ -51,16 +62,29 @@ pub const GROUPS: &[&[Tool]] = &[
     &[Tool::Lasso, Tool::PolyLasso],
     &[Tool::QuickSelect, Tool::MagicWand],
     &[Tool::Crop],
-    &[Tool::Eyedropper],
-    &[Tool::SpotHeal, Tool::Heal],
+    &[Tool::Eyedropper, Tool::Ruler],
+    &[Tool::SpotHeal, Tool::Heal, Tool::RedEye],
     &[Tool::Brush, Tool::Pencil],
-    &[Tool::CloneStamp],
-    &[Tool::Eraser],
+    &[Tool::CloneStamp, Tool::PatternStamp],
+    &[Tool::HistoryBrush],
+    &[Tool::Eraser, Tool::BackgroundEraser, Tool::MagicEraser],
     &[Tool::Gradient, Tool::Bucket],
     &[Tool::Blur, Tool::Sharpen, Tool::Smudge],
     &[Tool::Dodge, Tool::Burn, Tool::Sponge],
     &[Tool::Text],
-    &[Tool::Rectangle, Tool::RoundedRect, Tool::Ellipse, Tool::Polygon, Tool::Star, Tool::Line],
+    &[
+        Tool::Rectangle,
+        Tool::RoundedRect,
+        Tool::Ellipse,
+        Tool::Triangle,
+        Tool::Polygon,
+        Tool::Star,
+        Tool::Line,
+        Tool::Heart,
+        Tool::Arrow,
+        Tool::SpeechBubble,
+        Tool::Checkmark,
+    ],
     &[Tool::Hand],
     &[Tool::Zoom],
 ];
@@ -77,6 +101,17 @@ impl Tool {
             Self::MagicWand => "Magic Wand",
             Self::Crop => "Crop",
             Self::Eyedropper => "Eyedropper",
+            Self::Ruler => "Ruler",
+            Self::RedEye => "Red Eye",
+            Self::PatternStamp => "Pattern Stamp",
+            Self::HistoryBrush => "History Brush",
+            Self::BackgroundEraser => "Background Eraser",
+            Self::MagicEraser => "Magic Eraser",
+            Self::Triangle => "Triangle",
+            Self::Heart => "Heart",
+            Self::Arrow => "Arrow",
+            Self::SpeechBubble => "Speech Bubble",
+            Self::Checkmark => "Checkmark",
             Self::SpotHeal => "Spot Healing Brush",
             Self::Heal => "Healing Brush",
             Self::Brush => "Brush",
@@ -114,6 +149,17 @@ impl Tool {
             Self::MagicWand => ph::MAGIC_WAND,
             Self::Crop => ph::CROP,
             Self::Eyedropper => ph::EYEDROPPER,
+            Self::Ruler => ph::RULER,
+            Self::RedEye => ph::EYE,
+            Self::PatternStamp => ph::CHECKERBOARD,
+            Self::HistoryBrush => ph::CLOCK_COUNTER_CLOCKWISE,
+            Self::BackgroundEraser => ph::SELECTION_BACKGROUND,
+            Self::MagicEraser => ph::BROOM,
+            Self::Triangle => ph::TRIANGLE,
+            Self::Heart => ph::HEART,
+            Self::Arrow => ph::ARROW_FAT_RIGHT,
+            Self::SpeechBubble => ph::CHAT_TEARDROP,
+            Self::Checkmark => ph::CHECK_FAT,
             Self::SpotHeal | Self::Heal => ph::BANDAIDS,
             Self::Brush => ph::PAINT_BRUSH,
             Self::Pencil => ph::PENCIL_SIMPLE,
@@ -122,7 +168,7 @@ impl Tool {
             Self::Gradient => ph::GRADIENT,
             Self::Bucket => ph::PAINT_BUCKET,
             Self::Blur => ph::DROP,
-            Self::Sharpen => ph::TRIANGLE,
+            Self::Sharpen => ph::DIAMOND,
             Self::Smudge => ph::HAND_POINTING,
             Self::Dodge => ph::SUN_DIM,
             Self::Burn => ph::FIRE,
@@ -148,16 +194,27 @@ impl Tool {
             Self::Lasso | Self::PolyLasso => Key::L,
             Self::QuickSelect | Self::MagicWand => Key::W,
             Self::Crop => Key::C,
-            Self::Eyedropper => Key::I,
-            Self::SpotHeal | Self::Heal => Key::J,
+            Self::Eyedropper | Self::Ruler => Key::I,
+            Self::SpotHeal | Self::Heal | Self::RedEye => Key::J,
             Self::Brush | Self::Pencil => Key::B,
-            Self::CloneStamp => Key::S,
-            Self::Eraser => Key::E,
+            Self::CloneStamp | Self::PatternStamp => Key::S,
+            Self::HistoryBrush => Key::Y,
+            Self::Eraser | Self::BackgroundEraser | Self::MagicEraser => Key::E,
             Self::Gradient | Self::Bucket => Key::G,
             Self::Blur | Self::Sharpen | Self::Smudge => Key::R,
             Self::Dodge | Self::Burn | Self::Sponge => Key::O,
             Self::Text => Key::T,
-            Self::Rectangle | Self::RoundedRect | Self::Ellipse | Self::Polygon | Self::Star | Self::Line => Key::U,
+            Self::Rectangle
+            | Self::RoundedRect
+            | Self::Ellipse
+            | Self::Triangle
+            | Self::Polygon
+            | Self::Star
+            | Self::Line
+            | Self::Heart
+            | Self::Arrow
+            | Self::SpeechBubble
+            | Self::Checkmark => Key::U,
             Self::Hand => Key::H,
             Self::Zoom => Key::Z,
         })
@@ -174,6 +231,9 @@ impl Tool {
                 | Self::Pencil
                 | Self::Eraser
                 | Self::CloneStamp
+                | Self::PatternStamp
+                | Self::HistoryBrush
+                | Self::BackgroundEraser
                 | Self::SpotHeal
                 | Self::Heal
                 | Self::Blur
@@ -194,6 +254,11 @@ impl Tool {
             Self::Polygon => ShapeKind::Polygon { sides: o.sides },
             Self::Star => ShapeKind::Star { points: o.sides, inner: o.star_inner },
             Self::Line => ShapeKind::Line,
+            Self::Triangle => ShapeKind::Triangle,
+            Self::Heart => ShapeKind::Heart,
+            Self::Arrow => ShapeKind::Arrow,
+            Self::SpeechBubble => ShapeKind::SpeechBubble,
+            Self::Checkmark => ShapeKind::Checkmark,
             _ => return None,
         })
     }
@@ -215,14 +280,28 @@ impl Tool {
             Self::Heal | Self::CloneStamp => "Alt-click to set the source, then paint",
             Self::Brush | Self::Pencil => "Paint · [ and ] change size · Shift-click draws a straight line",
             Self::Eraser => "Erase to transparency",
+            Self::BackgroundEraser => "Erases the color under the centre of the brush, sparing edges",
+            Self::MagicEraser => "Click to erase similar connected colors",
+            Self::RedEye => "Drag a box around an eye to remove red-eye",
+            Self::PatternStamp => "Paint with the chosen pattern",
+            Self::HistoryBrush => "Paint back the image as it was when opened",
+            Self::Ruler => "Drag to measure distance and angle · Straighten levels the image",
             Self::Gradient => "Drag to draw a gradient",
             Self::Bucket => "Click to fill similar colors",
             Self::Blur | Self::Sharpen | Self::Smudge => "Paint to soften, sharpen or smear",
             Self::Dodge | Self::Burn | Self::Sponge => "Paint to lighten, darken or change saturation",
             Self::Text => "Click to add text, or click existing text to edit it",
-            Self::Rectangle | Self::RoundedRect | Self::Ellipse | Self::Polygon | Self::Star | Self::Line => {
-                "Drag to draw a shape layer · Shift constrains"
-            }
+            Self::Rectangle
+            | Self::RoundedRect
+            | Self::Ellipse
+            | Self::Triangle
+            | Self::Polygon
+            | Self::Star
+            | Self::Line
+            | Self::Heart
+            | Self::Arrow
+            | Self::SpeechBubble
+            | Self::Checkmark => "Drag to draw a shape layer · Shift constrains",
             Self::Hand => "Drag to pan · double-click to fit",
             Self::Zoom => "Click to zoom in · Alt-click to zoom out",
         }
@@ -263,6 +342,8 @@ pub struct ToolOptions {
     pub sponge_saturate: bool,
     pub strength: f32,
     pub crop_delete_pixels: bool,
+    pub pattern: usize,
+    pub red_eye_darken: f32,
 }
 
 impl Default for ToolOptions {
@@ -299,6 +380,8 @@ impl Default for ToolOptions {
             sponge_saturate: false,
             strength: 0.5,
             crop_delete_pixels: true,
+            pattern: 0,
+            red_eye_darken: 0.5,
         }
     }
 }

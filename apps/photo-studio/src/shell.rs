@@ -487,7 +487,17 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 );
                 label_dim(ui, "Uses the foreground color");
             }
-            Tool::Rectangle | Tool::RoundedRect | Tool::Ellipse | Tool::Polygon | Tool::Star | Tool::Line => {
+            Tool::Rectangle
+            | Tool::RoundedRect
+            | Tool::Ellipse
+            | Tool::Triangle
+            | Tool::Polygon
+            | Tool::Star
+            | Tool::Line
+            | Tool::Heart
+            | Tool::Arrow
+            | Tool::SpeechBubble
+            | Tool::Checkmark => {
                 if app.tool != Tool::Line {
                     ui.checkbox(&mut o.fill_enabled, "Fill (foreground)");
                     ui.checkbox(&mut o.stroke_enabled, "Stroke (background)");
@@ -537,6 +547,67 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     }
                 }
             }
+            Tool::PatternStamp => {
+                tip_controls(ui, &mut o.tip, true);
+                let mut names: Vec<&str> =
+                    studio_core::paint::builtin_patterns(app.fg, app.bg).iter().map(|p| p.0).collect();
+                if app.custom_pattern.is_some() {
+                    names.push("Defined pattern");
+                }
+                o.pattern = o.pattern.min(names.len() - 1);
+                egui::ComboBox::from_id_salt("pattern").width(130.0).selected_text(names[o.pattern]).show_ui(
+                    ui,
+                    |ui| {
+                        for (i, n) in names.iter().enumerate() {
+                            ui.selectable_value(&mut o.pattern, i, *n);
+                        }
+                    },
+                );
+                pct(ui, "Opacity", &mut o.opacity);
+                label_dim(ui, "Edit › Define Pattern adds your own");
+            }
+            Tool::HistoryBrush => {
+                tip_controls(ui, &mut o.tip, true);
+                pct(ui, "Opacity", &mut o.opacity);
+                label_dim(ui, "Source: the image as it was opened");
+            }
+            Tool::BackgroundEraser => {
+                tip_controls(ui, &mut o.eraser_tip, true);
+                label_dim(ui, "Tolerance");
+                ui.add(egui::DragValue::new(&mut o.tolerance).range(0..=255));
+            }
+            Tool::MagicEraser => {
+                label_dim(ui, "Tolerance");
+                ui.add(egui::DragValue::new(&mut o.tolerance).range(0..=255));
+                ui.checkbox(&mut o.anti_alias, "Anti-alias");
+                ui.checkbox(&mut o.contiguous, "Contiguous");
+                ui.checkbox(&mut o.sample_merged, "Sample all layers");
+            }
+            Tool::RedEye => {
+                pct(ui, "Darken", &mut o.red_eye_darken);
+                label_dim(ui, "Click an eye, or drag a box around it");
+            }
+            Tool::Ruler => match app.cv.ruler {
+                Some((a, b)) => {
+                    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+                    ui.label(format!(
+                        "W {:.1}  H {:.1}  ·  L {:.1} px  ·  A {:.1}°",
+                        dx.abs(),
+                        dy.abs(),
+                        dx.hypot(dy),
+                        -dy.atan2(dx).to_degrees()
+                    ));
+                    if ui.button("Straighten").on_hover_text("Rotate the canvas so the line is level").clicked() {
+                        actions.push(Action::Straighten);
+                    }
+                    if ui.button("Clear").clicked() {
+                        app.cv.ruler = None;
+                    }
+                }
+                None => {
+                    label_dim(ui, "Drag along something that should be level");
+                }
+            },
             Tool::Hand | Tool::Zoom => {
                 if ui.button("Fit on Screen").clicked() {
                     actions.push(Action::FitOnScreen);

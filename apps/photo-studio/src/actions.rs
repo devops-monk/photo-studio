@@ -31,6 +31,8 @@ pub enum Action {
     Fill,
     Stroke,
     FreeTransform,
+    DefinePattern,
+    Straighten,
     FlipLayer(bool),
     RotateLayer(Rotation),
     Preferences,

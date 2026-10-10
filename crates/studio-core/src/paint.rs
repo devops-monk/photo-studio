@@ -82,6 +82,15 @@ pub enum StrokeKind {
         source_low: Image,
         dest_low: Image,
     },
+    /// Paint with a repeating tile (Pattern Stamp).
+    Pattern {
+        pattern: Image,
+    },
+    /// Erase only colours close to `sample` (Background Eraser).
+    BackgroundErase {
+        sample: [u8; 3],
+        tolerance: u8,
+    },
     Smudge {
         strength: f32,
     },
@@ -199,7 +208,12 @@ impl StrokeEngine {
         };
 
         match &self.kind {
-            StrokeKind::Paint { .. } | StrokeKind::Erase | StrokeKind::Clone { .. } | StrokeKind::Heal { .. } => {
+            StrokeKind::Paint { .. }
+            | StrokeKind::Erase
+            | StrokeKind::Clone { .. }
+            | StrokeKind::Heal { .. }
+            | StrokeKind::Pattern { .. }
+            | StrokeKind::BackgroundErase { .. } => {
                 let flow = self.flow;
                 for y in rect.y..rect.bottom() {
                     for x in rect.x..rect.right() {
@@ -336,6 +350,23 @@ impl StrokeEngine {
                         ];
                         composite_pixel(b, healed, BlendMode::Normal)
                     }
+                    StrokeKind::Pattern { pattern } => {
+                        let (pw, ph) = pattern.size();
+                        if pw == 0 || ph == 0 {
+                            b
+                        } else {
+                            let s = pattern.get(x as u32 % pw, y as u32 % ph).to_f32();
+                            composite_pixel(b, [s[0], s[1], s[2], s[3] * a], BlendMode::Normal)
+                        }
+                    }
+                    StrokeKind::BackgroundErase { sample, tolerance } => {
+                        let d =
+                            (0..3).map(|i| (b[i] as i32 - sample[i] as i32).unsigned_abs()).max().unwrap_or(0) as f32;
+                        let t = *tolerance as f32;
+                        // Full erase inside the tolerance, a soft ramp just beyond it.
+                        let m = if d <= t { 1.0 } else { (1.0 - (d - t) / 24.0).max(0.0) };
+                        [b[0], b[1], b[2], (b[3] as f32 * (1.0 - a * m)).round() as u8]
+                    }
                     _ => b,
                 };
                 px[i * 4..i * 4 + 4].copy_from_slice(&out);
@@ -406,6 +437,64 @@ pub fn spot_heal_offset(img: &Image, x: f32, y: f32, size: f32) -> (f32, f32) {
         .min_by(|a, b| a.0.total_cmp(&b.0))
         .map(|(_, o)| o)
         .unwrap_or((dist, 0.0))
+}
+
+/// Remove red-eye inside `area`: strongly red pixels lose their red cast and darken.
+pub fn red_eye(img: &mut Image, area: Rect, darken: f32) {
+    let r = area.intersect(&img.bounds());
+    let w = img.width() as usize;
+    let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
+    let (rx, ry) = ((r.w as f32 / 2.0).max(1.0), (r.h as f32 / 2.0).max(1.0));
+    let px = img.pixels_mut();
+    for y in r.y..r.bottom() {
+        for x in r.x..r.right() {
+            let dx = (x as f32 + 0.5 - cx) / rx;
+            let dy = (y as f32 + 0.5 - cy) / ry;
+            let d = dx * dx + dy * dy;
+            if d > 1.0 {
+                continue;
+            }
+            let i = (y as usize * w + x as usize) * 4;
+            let (pr, pg, pb) = (px[i] as f32, px[i + 1] as f32, px[i + 2] as f32);
+            let redness = pr - (pg + pb) / 2.0;
+            if redness < 40.0 || pr < 60.0 {
+                continue;
+            }
+            let k = ((redness - 40.0) / 60.0).clamp(0.0, 1.0) * (1.0 - d * d);
+            let target = (pg + pb) / 2.0 * (1.0 - darken.clamp(0.0, 1.0) * 0.6);
+            px[i] = (pr + (target - pr) * k).round() as u8;
+            px[i + 1] = (pg + (pg * (1.0 - darken * 0.6) - pg) * k).round() as u8;
+            px[i + 2] = (pb + (pb * (1.0 - darken * 0.6) - pb) * k).round() as u8;
+        }
+    }
+}
+
+/// Built-in tiles for the Pattern Stamp and pattern fills.
+pub fn builtin_patterns(fg: Rgba, bg: Rgba) -> Vec<(&'static str, Image)> {
+    let tile = |n: u32, f: &dyn Fn(u32, u32) -> bool| {
+        let mut img = Image::new(n, n);
+        for y in 0..n {
+            for x in 0..n {
+                img.put(x, y, if f(x, y) { fg } else { bg });
+            }
+        }
+        img
+    };
+    let mut noise = Image::new(64, 64);
+    for y in 0..64 {
+        for x in 0..64 {
+            let t = crate::filters::fbm(x as f32 / 9.0, y as f32 / 9.0, 5);
+            noise.put(x, y, Rgba::lerp(fg, bg, t));
+        }
+    }
+    vec![
+        ("Checker", tile(16, &|x, y| (x / 8 + y / 8) % 2 == 0)),
+        ("Dots", tile(16, &|x, y| ((x as f32 - 7.5).powi(2) + (y as f32 - 7.5).powi(2)) < 12.0)),
+        ("Stripes", tile(16, &|x, y| (x + y) % 16 < 6)),
+        ("Grid", tile(16, &|x, y| x == 0 || y == 0)),
+        ("Bricks", tile(32, &|x, y| y % 16 == 0 || (if (y / 16) % 2 == 0 { x % 32 == 0 } else { x % 32 == 16 }))),
+        ("Clouds", noise),
+    ]
 }
 
 /// Render a gradient filling a `w × h` image, with light dithering against banding.
@@ -486,6 +575,44 @@ mod tests {
         }
         let c = img.get(20, 20);
         assert!((126..=129).contains(&c.r()), "{c:?}");
+    }
+
+    #[test]
+    fn background_eraser_keeps_other_colours() {
+        let mut img = Image::filled(20, 20, Rgba::WHITE);
+        for y in 0..20 {
+            img.put(10, y, Rgba::BLACK);
+        }
+        let tip = BrushTip { size: 12.0, hardness: 1.0, ..Default::default() };
+        let mut s = StrokeEngine::new(
+            &img,
+            StrokeKind::BackgroundErase { sample: [255, 255, 255], tolerance: 20 },
+            tip,
+            1.0,
+            1.0,
+            None,
+        );
+        s.stroke_to(&mut img, 10.0, 10.0, 1.0);
+        assert_eq!(img.get(8, 10).a(), 0);
+        assert_eq!(img.get(10, 10), Rgba::BLACK);
+    }
+
+    #[test]
+    fn pattern_stamp_tiles() {
+        let pat = builtin_patterns(Rgba::BLACK, Rgba::WHITE).remove(0).1;
+        let mut img = Image::filled(40, 40, Rgba::rgb(9, 9, 9));
+        let tip = BrushTip { size: 40.0, hardness: 1.0, ..Default::default() };
+        let mut s = StrokeEngine::new(&img, StrokeKind::Pattern { pattern: pat.clone() }, tip, 1.0, 1.0, None);
+        s.stroke_to(&mut img, 20.0, 20.0, 1.0);
+        assert_eq!(img.get(20, 20), pat.get(20 % 16, 20 % 16));
+    }
+
+    #[test]
+    fn red_eye_removes_red() {
+        let mut img = Image::filled(20, 20, Rgba::rgb(220, 30, 30));
+        red_eye(&mut img, Rect::new(0, 0, 20, 20), 0.5);
+        let c = img.get(10, 10);
+        assert!(c.r() < 60, "{c:?}");
     }
 
     #[test]

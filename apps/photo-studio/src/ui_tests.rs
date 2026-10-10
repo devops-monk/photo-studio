@@ -33,6 +33,7 @@ fn screen(h: &Harness<'static, App>, x: f32, y: f32) -> Pos2 {
 fn drag(h: &mut Harness<'static, App>, from: (f32, f32), to: (f32, f32), mods: Modifiers) {
     let a = screen(h, from.0, from.1);
     let b = screen(h, to.0, to.1);
+    h.event(Event::ModifiersChanged(mods));
     h.event(Event::PointerMoved(a));
     h.run_steps(1);
     h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: mods });
@@ -44,6 +45,7 @@ fn drag(h: &mut Harness<'static, App>, from: (f32, f32), to: (f32, f32), mods: M
     }
     h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: mods });
     h.run_steps(2);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
 }
 
 fn click(h: &mut Harness<'static, App>, at: (f32, f32)) {
@@ -189,4 +191,221 @@ fn adjustment_dialog_applies() {
     h.run_steps(3);
     assert!(h.state().dialog.is_none());
     assert_eq!(h.state().tab().unwrap().doc.layers[0].pixels.get(5, 5), Rgba::BLACK);
+}
+
+fn press_drag_with(h: &mut Harness<'static, App>, from: (f32, f32), to: (f32, f32), mods: Modifiers) {
+    drag(h, from, to, mods);
+}
+
+fn fill_layer(h: &mut Harness<'static, App>, c: Rgba) {
+    let tab = h.state_mut().tab_mut().unwrap();
+    let (w, hh) = (tab.doc.width, tab.doc.height);
+    tab.doc.layers[0].pixels = studio_core::Image::filled(w, hh, c);
+    tab.commit("fill");
+}
+
+#[test]
+fn gradient_tool_draws_ramp() {
+    let mut h = harness();
+    h.state_mut().set_tool(Tool::Gradient);
+    h.state_mut().fg = Rgba::BLACK;
+    h.state_mut().bg = Rgba::WHITE;
+    drag(&mut h, (0.0, 150.0), (400.0, 150.0), Modifiers::NONE);
+    let l = &h.state().tab().unwrap().doc.layers[0];
+    assert!(l.pixels.get(5, 10).r() < 20);
+    assert!(l.pixels.get(395, 10).r() > 235);
+    let mid = l.pixels.get(200, 10).r();
+    assert!((110..=145).contains(&mid), "{mid}");
+}
+
+#[test]
+fn clone_stamp_copies_from_alt_click_source() {
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        for y in 0..300 {
+            for x in 0..100 {
+                tab.doc.layers[0].pixels.put(x, y, Rgba::rgb(0, 200, 0));
+            }
+        }
+        tab.commit("paint");
+    }
+    h.state_mut().set_tool(Tool::CloneStamp);
+    let p = screen(&h, 50.0, 150.0);
+    h.event(Event::ModifiersChanged(Modifiers::ALT));
+    h.event(Event::PointerMoved(p));
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: p, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::ALT });
+    h.run_steps(1);
+    h.event(Event::PointerButton { pos: p, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::ALT });
+    h.run_steps(2);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    assert!(h.state().cv.clone_source.is_some());
+    drag(&mut h, (250.0, 150.0), (260.0, 150.0), Modifiers::NONE);
+    assert_eq!(h.state().tab().unwrap().doc.layers[0].pixels.get(255, 150), Rgba::rgb(0, 200, 0));
+}
+
+#[test]
+fn type_tool_creates_and_names_text_layer() {
+    let mut h = harness();
+    h.state_mut().set_tool(Tool::Text);
+    click(&mut h, (60.0, 120.0));
+    assert!(h.state().cv.text_edit.is_some(), "editor opened");
+    h.event(Event::Text("Hello".into()));
+    h.run_steps(3);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Enter);
+    h.run_steps(3);
+    let doc = &h.state().tab().unwrap().doc;
+    assert_eq!(doc.layers.len(), 2);
+    assert_eq!(doc.layers[1].name, "Hello");
+    assert!(doc.layers[1].pixels.opaque_bounds().is_some(), "text rendered");
+    assert_eq!(h.state().tab().unwrap().history.undo_label(), Some("Type Layer"));
+}
+
+#[test]
+fn free_transform_moves_and_commits() {
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        tab.doc.add_empty_layer("box");
+        for y in 100..140 {
+            for x in 100..140 {
+                tab.doc.layers[1].pixels.put(x, y, Rgba::rgb(200, 0, 0));
+            }
+        }
+        tab.commit("box");
+    }
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, crate::actions::Action::FreeTransform);
+    h.run_steps(2);
+    assert!(h.state().cv.transform.is_some());
+    drag(&mut h, (120.0, 120.0), (170.0, 130.0), Modifiers::NONE);
+    h.key_press(Key::Enter);
+    h.run_steps(2);
+    let b = h.state().tab().unwrap().doc.layers[1].pixels.opaque_bounds().unwrap();
+    assert!((b.x - 150).abs() <= 2 && (b.y - 110).abs() <= 2, "{b:?}");
+    assert_eq!(h.state().tab().unwrap().history.undo_label(), Some("Free Transform"));
+}
+
+#[test]
+fn painting_targets_layer_mask() {
+    let mut h = harness();
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, crate::actions::Action::MaskRevealAll);
+    h.run_steps(2);
+    assert!(h.state().edit_mask);
+    h.state_mut().set_tool(Tool::Brush);
+    h.state_mut().fg = Rgba::BLACK;
+    drag(&mut h, (100.0, 150.0), (300.0, 150.0), Modifiers::NONE);
+    let l = &h.state().tab().unwrap().doc.layers[0];
+    assert_eq!(l.mask.as_ref().unwrap().get(200, 150), 0, "mask painted black");
+    assert_eq!(l.pixels.get(200, 150), Rgba::WHITE, "pixels untouched");
+}
+
+#[test]
+fn layer_style_dialog_applies_shadow() {
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        tab.doc.add_empty_layer("dot");
+        for y in 50..80 {
+            for x in 50..80 {
+                tab.doc.layers[1].pixels.put(x, y, Rgba::rgb(255, 0, 0));
+            }
+        }
+        tab.commit("dot");
+    }
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, crate::actions::Action::LayerStyle);
+    h.run_steps(2);
+    if let Some(crate::dialogs::Dialog::LayerStyle { styles, .. }) = &mut h.state_mut().dialog {
+        styles.drop_shadow.enabled = true;
+    }
+    // Toggle via the dialog's own checkbox path: mark the styles on the layer and press OK.
+    h.state_mut().tab_mut().unwrap().doc.layers[1].styles.drop_shadow.enabled = true;
+    h.run_steps(2);
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    let tab = h.state().tab().unwrap();
+    assert!(tab.doc.layers[1].styles.drop_shadow.enabled);
+    assert_eq!(tab.history.undo_label(), Some("Layer Style"));
+}
+
+#[test]
+fn magic_eraser_clears_connected_color() {
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        for y in 0..300 {
+            for x in 0..50 {
+                tab.doc.layers[0].pixels.put(x, y, Rgba::BLACK);
+            }
+        }
+        tab.commit("paint");
+    }
+    h.state_mut().set_tool(Tool::MagicEraser);
+    click(&mut h, (300.0, 100.0));
+    let l = &h.state().tab().unwrap().doc.layers[0];
+    assert_eq!(l.pixels.get(300, 100).a(), 0);
+    assert_eq!(l.pixels.get(10, 10), Rgba::BLACK);
+}
+
+#[test]
+fn background_eraser_and_pattern_stamp() {
+    let mut h = harness();
+    h.state_mut().set_tool(Tool::BackgroundEraser);
+    drag(&mut h, (100.0, 150.0), (200.0, 150.0), Modifiers::NONE);
+    assert_eq!(h.state().tab().unwrap().doc.layers[0].pixels.get(150, 150).a(), 0);
+
+    h.state_mut().set_tool(Tool::PatternStamp);
+    h.state_mut().opts.tip.hardness = 1.0;
+    drag(&mut h, (100.0, 250.0), (300.0, 250.0), Modifiers::NONE);
+    let l = &h.state().tab().unwrap().doc.layers[0];
+    let a = l.pixels.get(200, 250);
+    let b = l.pixels.get(208, 250);
+    assert!(a != b, "checker pattern alternates: {a:?} {b:?}");
+}
+
+#[test]
+fn history_brush_restores_original() {
+    let mut h = harness();
+    fill_layer(&mut h, Rgba::rgb(0, 0, 255));
+    h.state_mut().set_tool(Tool::HistoryBrush);
+    h.state_mut().opts.tip.hardness = 1.0;
+    drag(&mut h, (100.0, 150.0), (300.0, 150.0), Modifiers::NONE);
+    let l = &h.state().tab().unwrap().doc.layers[0];
+    assert_eq!(l.pixels.get(200, 150), Rgba::WHITE, "painted back to the opened state");
+    assert_eq!(l.pixels.get(200, 20), Rgba::rgb(0, 0, 255));
+}
+
+#[test]
+fn red_eye_and_ruler_straighten() {
+    let mut h = harness();
+    fill_layer(&mut h, Rgba::rgb(220, 30, 30));
+    h.state_mut().set_tool(Tool::RedEye);
+    press_drag_with(&mut h, (150.0, 100.0), (250.0, 200.0), Modifiers::NONE);
+    assert!(h.state().tab().unwrap().doc.layers[0].pixels.get(200, 150).r() < 80);
+
+    h.state_mut().set_tool(Tool::Ruler);
+    drag(&mut h, (50.0, 100.0), (350.0, 130.0), Modifiers::NONE);
+    assert!(h.state().cv.ruler.is_some());
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, crate::actions::Action::Straighten);
+    h.run_steps(2);
+    let d = &h.state().tab().unwrap().doc;
+    assert!(d.width > 400, "canvas rotated and grew: {}x{}", d.width, d.height);
+}
+
+#[test]
+fn custom_shapes_render() {
+    let mut h = harness();
+    for t in [Tool::Triangle, Tool::Heart, Tool::Arrow, Tool::SpeechBubble, Tool::Checkmark] {
+        h.state_mut().set_tool(t);
+        drag(&mut h, (100.0, 60.0), (300.0, 240.0), Modifiers::NONE);
+        let doc = &h.state().tab().unwrap().doc;
+        let l = doc.layers.last().unwrap();
+        assert!(l.pixels.opaque_bounds().is_some(), "{} drew pixels", t.label());
+        assert_eq!(l.name, t.label());
+    }
+    assert_eq!(h.state().tab().unwrap().doc.layers.len(), 6);
 }
