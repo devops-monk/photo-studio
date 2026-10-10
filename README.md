@@ -19,6 +19,7 @@ One self-contained binary, no runtime, works offline.</p>
 - **Selections**: Select Subject, Color Range, Quick Mask (Q), saved selections, feather, expand, contract, border and smooth
 - **Paths**: Bézier paths become selections, fills, strokes or shape layers
 - **Brushes**: presets with angle, roundness, scatter, size and opacity jitter, and stroke smoothing
+- **Tools for notes and output**: Note, Count and Slice (with Export Slices)
 - **Workflow**: rulers, guides, grid and snapping; a ⌘F command palette; Actions that record, replay and batch-process folders; unlimited visual history
 - **Files**: layered `.pstudio` projects; PSD and OpenRaster with groups; SVG, OpenEXR and HDR; and PNG, JPEG, WebP, TIFF, BMP, GIF, TGA, ICO, QOI and PNM
 - Light and dark themes, and keyboard shortcuts familiar from other editors
@@ -42,6 +43,16 @@ macOS builds aren't notarized yet. On first launch, right-click the app and choo
 photo-studio-cli photo.jpg --adjust autotone --filter unsharp=80,1.5 -o photo-fixed.jpg
 photo-studio-cli batch ./raw --out-dir ./web --format webp --resize 1600
 photo-studio-cli list    # every adjustment and filter
+```
+
+### For AI agents (MCP)
+
+`photo-studio-cli mcp` is a Model Context Protocol server on stdio with tools to open, create,
+inspect, adjust, filter, transform, select the subject (and remove the background) and export.
+Add it to an MCP client, for example:
+
+```json
+{ "mcpServers": { "photo-studio": { "command": "photo-studio-cli", "args": ["mcp"] } } }
 ```
 
 ## Build from source

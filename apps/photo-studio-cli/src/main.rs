@@ -1,5 +1,7 @@
 //! photo-studio-cli: batch image editing with the Photo Studio engine.
 
+mod mcp;
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -17,6 +19,7 @@ USAGE:
     photo-studio-cli batch <inputs or folders…> --out-dir <dir> [--format <ext>] [operations…]
     photo-studio-cli info <file>…
     photo-studio-cli list
+    photo-studio-cli mcp       Model Context Protocol server on stdio, for AI agents
 
 Operations run in the order given:
     --resize <W | W% | WxH>        Resize (keeps aspect ratio unless WxH)
@@ -67,7 +70,7 @@ Filters (--filter):
 ";
 
 #[derive(Debug, Clone)]
-enum Op {
+pub(crate) enum Op {
     Resize(String),
     Rotate(f32),
     Flip(bool),
@@ -96,7 +99,7 @@ fn split(spec: &str) -> (String, String) {
     }
 }
 
-fn apply_adjust(doc: &mut Document, spec: &str) -> Result<(), String> {
+pub(crate) fn apply_adjust(doc: &mut Document, spec: &str) -> Result<(), String> {
     let (name, val) = split(spec);
     let v = nums(&val)?;
     let img = &mut doc.layers[doc.active].pixels;
@@ -166,7 +169,7 @@ fn apply_adjust(doc: &mut Document, spec: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_filter(spec: &str) -> Result<Filter, String> {
+pub(crate) fn parse_filter(spec: &str) -> Result<Filter, String> {
     let (name, val) = split(spec);
     let v = nums(&val)?;
     let a = |i: usize, d: f32| arg(&name, &v, i, Some(d));
@@ -220,7 +223,7 @@ fn parse_resize(spec: &str, w: u32, h: u32) -> Result<(u32, u32), String> {
     Ok((nw.max(1), ((h as f64 * nw as f64 / w as f64).round() as u32).max(1)))
 }
 
-fn run_ops(doc: &mut Document, ops: &[Op]) -> Result<(), String> {
+pub(crate) fn run_ops(doc: &mut Document, ops: &[Op]) -> Result<(), String> {
     for op in ops {
         // Most operations work on the active (or only) layer; flatten first for layered files.
         match op {
@@ -264,7 +267,7 @@ fn ensure_raster(doc: &mut Document) {
     }
 }
 
-fn save(doc: &Document, out: &Path, quality: u8) -> Result<(), String> {
+pub(crate) fn save(doc: &Document, out: &Path, quality: u8) -> Result<(), String> {
     let ext = out.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
     let r = if ext == io::PROJECT_EXTENSION {
         io::save_project(doc, out)
@@ -384,6 +387,7 @@ fn real_main(args: Vec<String>) -> Result<(), String> {
         return Ok(());
     }
     match args[0].as_str() {
+        "mcp" => mcp::serve(),
         "list" => {
             print!("{LIST}");
             Ok(())

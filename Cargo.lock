@@ -2733,6 +2733,7 @@ dependencies = [
 name = "photo-studio-cli"
 version = "0.2.0"
 dependencies = [
+ "serde_json",
  "studio-core",
 ]
 
