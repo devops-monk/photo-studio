@@ -255,6 +255,10 @@ pub fn project_bytes(doc: &Document) -> Result<Vec<u8>> {
             zw.start_file(format!("layers/{}.png", l.id), stored)?;
             zw.write_all(&png_bytes(&DynamicImage::ImageRgba8(l.pixels.to_rgba_image()))?)?;
         }
+        if let Some(src) = &l.source {
+            zw.start_file(format!("sources/{}.png", l.id), stored)?;
+            zw.write_all(&png_bytes(&DynamicImage::ImageRgba8(src.to_rgba_image()))?)?;
+        }
         if let Some(m) = &l.mask {
             let g = image::GrayImage::from_raw(m.width(), m.height(), m.data().to_vec()).expect("mask size");
             zw.start_file(format!("masks/{}.png", l.id), stored)?;
@@ -321,6 +325,12 @@ pub fn project_from_bytes(bytes: &[u8]) -> Result<Document> {
                 if img.size() == (m.width, m.height) {
                     layer.pixels = img;
                 }
+            }
+        }
+        if matches!(layer.kind, LayerKind::Smart { .. }) {
+            if let Some(img) = read_png(format!("sources/{}.png", meta.id))? {
+                layer.source = Some(Image::from_rgba_image(img.into_rgba8()));
+                layer.render(m.width, m.height);
             }
         }
         if meta.has_mask {

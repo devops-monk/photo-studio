@@ -13,6 +13,25 @@ use crate::text::TextLayer;
 
 pub type LayerId = u64;
 
+/// A filter applied non-destructively to a smart object.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SmartFilter {
+    pub filter: crate::filters::Filter,
+    pub enabled: bool,
+}
+
+/// Row-major affine [a, b, c, d, e, f] mapping source pixels to the canvas.
+pub const IDENTITY_XFORM: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+
+fn to_affine(x: &[f32; 6]) -> crate::geom::Affine {
+    crate::geom::Affine { a: x[0], b: x[1], c: x[2], d: x[3], e: x[4], f: x[5] }
+}
+
+pub fn compose_xform(x: &[f32; 6], t: &crate::geom::Affine) -> [f32; 6] {
+    let r = to_affine(x).then(t);
+    [r.a, r.b, r.c, r.d, r.e, r.f]
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum FillLayer {
     Solid(Rgba),
@@ -28,6 +47,12 @@ pub enum LayerKind {
     Adjustment(Adjustment),
     /// A folder of layers. Its children sit directly below it in the stack and point at it
     /// through `Layer::parent`.
+    /// Keeps its original pixels in `Layer::source`; transforms and filters are re-applied
+    /// from them, so nothing is lost.
+    Smart {
+        filters: Vec<SmartFilter>,
+        xform: [f32; 6],
+    },
     Group {
         /// Pass-through groups blend their children straight into the layers below;
         /// otherwise the group is flattened on its own first (isolated).
@@ -45,12 +70,13 @@ impl LayerKind {
             Self::Fill(_) => "Fill",
             Self::Adjustment(_) => "Adjustment",
             Self::Group { .. } => "Group",
+            Self::Smart { .. } => "Smart Object",
         }
     }
 
     /// Text, shape and fill layers are drawn from parameters rather than painted.
     pub fn is_generated(&self) -> bool {
-        matches!(self, Self::Text(_) | Self::Shape(_) | Self::Fill(_))
+        matches!(self, Self::Text(_) | Self::Shape(_) | Self::Fill(_) | Self::Smart { .. })
     }
 }
 
@@ -73,6 +99,8 @@ pub struct Layer {
     pub styles: LayerStyles,
     /// The group this layer belongs to.
     pub parent: Option<LayerId>,
+    /// Original pixels of a smart object.
+    pub source: Option<Image>,
 }
 
 impl Layer {
@@ -91,6 +119,7 @@ impl Layer {
             clip: false,
             styles: LayerStyles::default(),
             parent: None,
+            source: None,
         }
     }
 
@@ -103,6 +132,20 @@ impl Layer {
         let mut l = Layer { kind, ..Layer::raster(id, name, pixels) };
         l.render(w, h);
         l
+    }
+
+    pub fn is_smart(&self) -> bool {
+        matches!(self.kind, LayerKind::Smart { .. })
+    }
+
+    /// Make this layer a smart object whose source is its current pixels.
+    pub fn convert_to_smart(&mut self) -> bool {
+        if self.pixels.width() == 0 || self.is_smart() {
+            return false;
+        }
+        self.source = Some(self.pixels.clone());
+        self.kind = LayerKind::Smart { filters: Vec::new(), xform: IDENTITY_XFORM };
+        true
     }
 
     pub fn is_group(&self) -> bool {
@@ -131,6 +174,19 @@ impl Layer {
             LayerKind::Fill(FillLayer::Gradient { gradient, shape, start, end }) => {
                 self.pixels = crate::paint::render_gradient(w, h, gradient, *shape, *start, *end)
             }
+            LayerKind::Smart { filters, xform } => {
+                let Some(src) = &self.source else { return };
+                let mut img = if *xform == IDENTITY_XFORM && src.size() == (w, h) {
+                    src.clone()
+                } else {
+                    crate::transform::affine(src, &to_affine(xform), w, h)
+                };
+                let ctx = crate::filters::FilterCtx::default();
+                for f in filters.iter().filter(|f| f.enabled) {
+                    f.filter.apply(&mut img, None, &ctx);
+                }
+                self.pixels = img;
+            }
             LayerKind::Raster | LayerKind::Adjustment(_) | LayerKind::Group { .. } => {}
         }
     }
@@ -139,6 +195,7 @@ impl Layer {
     pub fn rasterize(&mut self) {
         if self.kind.is_generated() {
             self.kind = LayerKind::Raster;
+            self.source = None;
         }
     }
 

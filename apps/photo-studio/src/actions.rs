@@ -79,6 +79,7 @@ pub enum Action {
     Ungroup,
     NewGroup,
     Rasterize,
+    ConvertToSmart,
     BringToFront,
     BringForward,
     SendBackward,

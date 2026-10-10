@@ -655,3 +655,44 @@ fn save_and_load_selection() {
     assert!((b.x - 20).abs() <= 1 && (b.w as i32 - 100).abs() <= 2);
     assert_eq!(h.state().tab().unwrap().doc.channels.len(), 1);
 }
+
+#[test]
+fn smart_object_filters_and_project_round_trip() {
+    let mut h = harness();
+    {
+        let tab = h.state_mut().tab_mut().unwrap();
+        tab.doc.add_empty_layer("art");
+        for y in 100..200 {
+            for x in 100..200 {
+                tab.doc.layers[1].pixels.put(x, y, Rgba::rgb(0, 0, 0));
+            }
+        }
+        tab.commit("art");
+    }
+    let ctx = h.ctx.clone();
+    h.state_mut().run(&ctx, crate::actions::Action::ConvertToSmart);
+    h.state_mut().run(&ctx, crate::actions::Action::Filter(studio_core::Filter::Solarize));
+    h.run_steps(2);
+    let tab = h.state().tab().unwrap();
+    let l = &tab.doc.layers[1];
+    match &l.kind {
+        studio_core::LayerKind::Smart { filters, .. } => assert_eq!(filters.len(), 1),
+        k => panic!("expected a smart object, got {}", k.badge()),
+    }
+    assert!(l.source.is_some());
+    assert_eq!(tab.history.undo_label(), Some("Smart Filter: Solarize"));
+    // The project keeps the source and the filter list.
+    let bytes = studio_core::io::project_bytes(&tab.doc).unwrap();
+    let back = studio_core::io::project_from_bytes(&bytes).unwrap();
+    assert_eq!(back.layers[1].kind, l.kind);
+    assert_eq!(back.layers[1].pixels, l.pixels);
+    assert_eq!(back.layers[1].source, l.source);
+    // Disabling the smart filter via Properties-style edit re-renders from the source.
+    let tab = h.state_mut().tab_mut().unwrap();
+    let (w, hh) = (tab.doc.width, tab.doc.height);
+    if let studio_core::LayerKind::Smart { filters, .. } = &mut tab.doc.layers[1].kind {
+        filters[0].enabled = false;
+    }
+    tab.doc.layers[1].render(w, hh);
+    assert_eq!(tab.doc.layers[1].pixels.get(150, 150), Rgba::BLACK);
+}

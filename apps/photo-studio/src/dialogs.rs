@@ -254,7 +254,8 @@ fn preview_apply(app: &mut App, pv: &mut Preview, now: f64, f: impl FnOnce(&mut 
             if matches!(layer.kind, LayerKind::Text(_) | LayerKind::Shape(_)) {
                 layer.rasterize();
             }
-            if matches!(layer.kind, LayerKind::Raster) && !layer.locked {
+            // Smart objects preview on their rendered pixels; OK adds a smart filter.
+            if matches!(layer.kind, LayerKind::Raster | LayerKind::Smart { .. }) && !layer.locked {
                 f(&mut layer.pixels, sel.as_ref());
             }
         }
@@ -462,10 +463,17 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
             }
             match r {
                 Some((true, _)) => {
-                    pv.dirty_at = Some(-1.0);
-                    preview_apply(app, pv, now, |img, sel| f.apply(img, sel, &fc));
                     app.last_filter = Some(filter.clone());
-                    commit(app, title);
+                    // Smart objects get the filter as an editable smart filter.
+                    let smart = app.tab().and_then(|t| t.doc.active_layer()).is_some_and(|l| l.is_smart());
+                    if smart {
+                        restore(app, pv);
+                        app.add_smart_filter(filter.clone());
+                    } else {
+                        pv.dirty_at = Some(-1.0);
+                        preview_apply(app, pv, now, |img, sel| f.apply(img, sel, &fc));
+                        commit(app, title);
+                    }
                     false
                 }
                 Some((_, true)) | None => {

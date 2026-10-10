@@ -85,6 +85,7 @@ pub fn action_label(a: &Action) -> String {
         Action::Ungroup => "Ungroup Layers".into(),
         Action::NewGroup => "New Group".into(),
         Action::Rasterize => "Rasterize Layer".into(),
+        Action::ConvertToSmart => "Convert to Smart Object".into(),
         Action::BringToFront => "Bring to Front".into(),
         Action::BringForward => "Bring Forward".into(),
         Action::SendBackward => "Send Backward".into(),
@@ -300,6 +301,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
                 item(ui, out, Action::MaskDelete, has_mask);
             });
             item(ui, out, Action::ToggleClipping, doc);
+            item(ui, out, Action::ConvertToSmart, doc);
             item(ui, out, Action::Rasterize, doc);
             ui.separator();
             ui.menu_button("Arrange", |ui| {
@@ -475,6 +477,7 @@ pub fn all_commands() -> Vec<Action> {
         Action::MaskInvert,
         Action::ToggleClipping,
         Action::Rasterize,
+        Action::ConvertToSmart,
         Action::BringToFront,
         Action::BringForward,
         Action::SendBackward,

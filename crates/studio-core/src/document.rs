@@ -760,6 +760,12 @@ impl Document {
         if l.is_adjustment() {
             return;
         }
+        // Smart objects transform losslessly from their source.
+        if let LayerKind::Smart { xform, .. } = &mut l.kind {
+            *xform = crate::layer::compose_xform(xform, t);
+            l.render(w, h);
+            return;
+        }
         l.rasterize();
         match &sel {
             Some(m) => {
@@ -805,6 +811,10 @@ impl Document {
             LayerKind::Text(t) => {
                 t.x += dx as f32;
                 t.y += dy as f32;
+                l.render(w, h);
+            }
+            LayerKind::Smart { xform, .. } => {
+                *xform = crate::layer::compose_xform(xform, &Affine::translate(dx as f32, dy as f32));
                 l.render(w, h);
             }
             LayerKind::Shape(s) => {
@@ -871,6 +881,9 @@ fn scale_params(kind: &mut LayerKind, p: &Params) {
         LayerKind::Shape(s) => {
             s.from = map(s.from);
             s.to = map(s.to);
+            if let Some(path) = &mut s.path {
+                path.map(map);
+            }
             s.stroke_width *= k;
             if let crate::shape::ShapeKind::RoundedRect { radius } = &mut s.kind {
                 *radius *= k;
@@ -879,6 +892,14 @@ fn scale_params(kind: &mut LayerKind, p: &Params) {
         LayerKind::Fill(FillLayer::Gradient { start, end, .. }) => {
             *start = map(*start);
             *end = map(*end);
+        }
+        LayerKind::Smart { xform, .. } => {
+            let t = match p {
+                Params::Offset(dx, dy) => Affine::translate(*dx, *dy),
+                Params::Scale(sx, sy) => Affine::scale(*sx, *sy),
+                Params::Rasterize => Affine::IDENTITY,
+            };
+            *xform = crate::layer::compose_xform(xform, &t);
         }
         _ => {}
     }
@@ -993,6 +1014,49 @@ mod tests {
         assert_eq!(d.guides[0].pos, 40.0);
         d.resize_image(160, 200, Resample::Bilinear);
         assert_eq!(d.guides[0].pos, 80.0);
+    }
+
+    #[test]
+    fn smart_object_scales_losslessly() {
+        let mut d = Document::new(40, 40, Some(Rgba::WHITE));
+        d.add_empty_layer("dots");
+        for x in 0..40 {
+            d.layers[1].pixels.put(x, 20, if x % 2 == 0 { Rgba::BLACK } else { Rgba::rgb(255, 0, 0) });
+        }
+        assert!(d.layers[1].convert_to_smart());
+        let shrink = Affine::scale(0.25, 0.25);
+        d.transform_active(&shrink);
+        d.transform_active(&shrink.invert().unwrap());
+        // Back at full size, the 1-pixel pattern is intact: it was re-sampled from the source.
+        assert_eq!(d.layers[1].pixels.get(10, 20), Rgba::BLACK);
+        assert_eq!(d.layers[1].pixels.get(11, 20), Rgba::rgb(255, 0, 0));
+    }
+
+    #[test]
+    fn smart_filters_stay_editable() {
+        let mut d = Document::new(20, 20, Some(Rgba::WHITE));
+        d.add_empty_layer("box");
+        for y in 5..15 {
+            for x in 5..15 {
+                d.layers[1].pixels.put(x, y, Rgba::BLACK);
+            }
+        }
+        d.layers[1].convert_to_smart();
+        let (w, h) = (d.width, d.height);
+        if let LayerKind::Smart { filters, .. } = &mut d.layers[1].kind {
+            filters.push(crate::layer::SmartFilter { filter: crate::filters::Filter::Solarize, enabled: true });
+            filters.push(crate::layer::SmartFilter {
+                filter: crate::filters::Filter::GaussianBlur { radius: 3.0 },
+                enabled: true,
+            });
+        }
+        d.layers[1].render(w, h);
+        assert!(d.layers[1].pixels.get(4, 10).a() > 0, "blur spreads");
+        if let LayerKind::Smart { filters, .. } = &mut d.layers[1].kind {
+            filters[1].enabled = false;
+        }
+        d.layers[1].render(w, h);
+        assert_eq!(d.layers[1].pixels.get(4, 10).a(), 0, "disabling the blur restores the edge");
     }
 
     #[test]

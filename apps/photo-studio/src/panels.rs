@@ -342,6 +342,7 @@ fn properties(app: &mut App, ui: &mut Ui) {
         LayerKind::Shape(_) => "Properties · Shape".into(),
         LayerKind::Fill(_) => "Properties · Fill".into(),
         LayerKind::Group { .. } => "Properties · Group".into(),
+        LayerKind::Smart { .. } => "Properties · Smart Object".into(),
         LayerKind::Raster => return,
     };
     let mut changed = false;
@@ -459,6 +460,31 @@ fn properties(app: &mut App, ui: &mut Ui) {
                         changed = true;
                     }
                 }
+            }
+        }
+        LayerKind::Smart { filters, .. } => {
+            label = "Edit Smart Filters";
+            if filters.is_empty() {
+                label_dim(ui, "Filters you apply to this layer appear here and stay editable.");
+            }
+            let mut remove = None;
+            for (i, sf) in filters.iter_mut().enumerate().rev() {
+                ui.horizontal(|ui| {
+                    changed |= ui.checkbox(&mut sf.enabled, "").changed();
+                    ui.label(sf.filter.label());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if small_button(ui, ph::TRASH, "Remove filter").clicked() {
+                            remove = Some(i);
+                        }
+                    });
+                });
+                ui.indent(("sf", i), |ui| {
+                    changed |= crate::params::filter_ui(ui, &mut sf.filter);
+                });
+            }
+            if let Some(i) = remove {
+                filters.remove(i);
+                changed = true;
             }
         }
         LayerKind::Group { pass_through, .. } => {
@@ -687,6 +713,7 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     LayerKind::Fill(_) => Some(ph::PAINT_BUCKET),
                     LayerKind::Adjustment(_) => Some(ph::CIRCLE_HALF),
                     LayerKind::Group { .. } => None,
+                    LayerKind::Smart { .. } => Some(ph::CUBE),
                 };
                 (
                     i == tab.doc.active,

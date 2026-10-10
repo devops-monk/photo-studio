@@ -407,6 +407,10 @@ impl App {
             }
         }
         match layer.kind {
+            LayerKind::Smart { .. } => {
+                self.notify(ctx, "Smart objects keep their pixels: rasterize the layer to paint on it");
+                return;
+            }
             LayerKind::Adjustment(_) | LayerKind::Fill(_) | LayerKind::Group { .. } => {
                 self.notify(ctx, "Select a pixel layer first");
                 return;
@@ -504,7 +508,24 @@ impl App {
         let fc = self.filter_ctx();
         let label = f.label();
         self.last_filter = Some(f.clone());
+        if self.add_smart_filter(f.clone()) {
+            return;
+        }
         self.edit_pixels(ctx, label, |img, sel| f.apply(img, sel, &fc));
+    }
+
+    /// On a smart object, filters are added to its list instead of changing pixels.
+    /// Returns whether the active layer was a smart object.
+    pub fn add_smart_filter(&mut self, f: Filter) -> bool {
+        let Some(tab) = self.tab_mut() else { return false };
+        let (w, h) = (tab.doc.width, tab.doc.height);
+        let Some(layer) = tab.doc.active_layer_mut() else { return false };
+        let LayerKind::Smart { filters, .. } = &mut layer.kind else { return false };
+        let label = format!("Smart Filter: {}", f.label());
+        filters.push(studio_core::layer::SmartFilter { filter: f, enabled: true });
+        layer.render(w, h);
+        tab.commit(&label);
+        true
     }
 
     fn modify_selection(&mut self, kind: ModifyKind, amount: f32) {
@@ -938,6 +959,21 @@ impl App {
                     }
                 }
             }),
+            Action::ConvertToSmart => {
+                let ok = self
+                    .tab()
+                    .and_then(|t| t.doc.active_layer())
+                    .is_some_and(|l| l.pixels.width() > 0 && !l.is_smart());
+                if ok {
+                    self.edit("Convert to Smart Object", |d| {
+                        if let Some(l) = d.active_layer_mut() {
+                            l.convert_to_smart();
+                        }
+                    });
+                } else {
+                    self.notify(ctx, "Select a pixel, type or shape layer");
+                }
+            }
             Action::Rasterize => self.edit("Rasterize Layer", |d| {
                 if let Some(l) = d.active_layer_mut() {
                     l.rasterize();
