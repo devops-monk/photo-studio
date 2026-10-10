@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.devopsmonk.PhotoStudio</id>
+  <name>Photo Studio</name>
+  <summary>Layer-based photo editor</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="com.devops-monk"><name>Abhay Pratap Singh</name></developer>
+  <description>
+    <p>Photo Studio is a fast, native photo editor with layers, masks, adjustment layers,
+    layer styles, selections, brushes, type, shapes, 30 filters and PSD support.</p>
+  </description>
+  <launchable type="desktop-id">photo-studio.desktop</launchable>
+  <url type="homepage">https://photo-studio.devops-monk.com</url>
+  <url type="bugtracker">https://github.com/devops-monk/photo-studio/issues</url>
+  <content_rating type="oars-1.1"/>
+</component>

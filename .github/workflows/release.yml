@@ -1,0 +1,85 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  linux:
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-22.04, arch: x86_64 }
+          - { runner: ubuntu-22.04-arm, arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libwayland-dev libgtk-3-dev libfuse2 file
+      - run: cargo build --release -p photo-studio -p photo-studio-cli
+      - name: Package
+        run: |
+          V="${GITHUB_REF_NAME#v}"; mkdir -p dist
+          D="photo-studio-$V-linux-${{ matrix.arch }}"; mkdir "$D"
+          cp target/release/photo-studio target/release/photo-studio-cli LICENSE README.md packaging/linux/photo-studio.desktop packaging/icons/256.png "$D/"
+          tar czf "dist/$D.tar.gz" "$D"
+          cargo install cargo-deb --locked
+          cargo deb -p photo-studio --no-build -o "dist/photo-studio_${V}_${{ matrix.arch }}.deb"
+          packaging/linux/appimage.sh target/release/photo-studio "$V" ${{ matrix.arch }} dist
+      - uses: actions/upload-artifact@v4
+        with: { name: linux-${{ matrix.arch }}, path: dist/* }
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: 'aarch64-apple-darwin,x86_64-apple-darwin' }
+      - uses: Swatinem/rust-cache@v2
+      - name: Build universal binaries
+        run: |
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do cargo build --release --target $t -p photo-studio -p photo-studio-cli; done
+          mkdir -p dist universal
+          for b in photo-studio photo-studio-cli; do lipo -create -output universal/$b target/aarch64-apple-darwin/release/$b target/x86_64-apple-darwin/release/$b; done
+      - name: Package
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          packaging/macos/bundle.sh universal/photo-studio "$V" dist
+          D="photo-studio-cli-$V-macos-universal"; mkdir "$D"; cp universal/photo-studio-cli LICENSE "$D/"; tar czf "dist/$D.tar.gz" "$D"
+      - uses: actions/upload-artifact@v4
+        with: { name: macos, path: 'dist/*.dmg
+          dist/*.tar.gz' }
+  windows:
+    strategy:
+      matrix:
+        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: '${{ matrix.target }}' }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --target ${{ matrix.target }} -p photo-studio -p photo-studio-cli
+      - name: Package
+        shell: pwsh
+        run: |
+          $v = "$env:GITHUB_REF_NAME".TrimStart('v'); $arch = if ('${{ matrix.target }}' -like 'x86_64*') { 'x64' } else { 'arm64' }
+          $d = "photo-studio-$v-windows-$arch"; New-Item -ItemType Directory $d, dist | Out-Null
+          Copy-Item target/${{ matrix.target }}/release/photo-studio.exe, target/${{ matrix.target }}/release/photo-studio-cli.exe, LICENSE, README.md $d
+          Compress-Archive $d "dist/$d.zip"
+      - uses: actions/upload-artifact@v4
+        with: { name: windows-${{ matrix.target }}, path: dist/* }
+  publish:
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - run: cd dist && sha256sum * > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
