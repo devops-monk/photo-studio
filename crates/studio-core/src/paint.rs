@@ -15,6 +15,7 @@ use crate::gradient::{Gradient, GradientShape};
 use crate::image::{Image, Mask};
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct BrushTip {
     /// Diameter in pixels.
     pub size: f32,
@@ -24,12 +25,72 @@ pub struct BrushTip {
     pub spacing: f32,
     /// Aliased (pencil) edges.
     pub aliased: bool,
+    /// Tip rotation in degrees.
+    pub angle: f32,
+    /// 1 = round, smaller values flatten the tip into an ellipse.
+    pub roundness: f32,
+    /// Random dab offset, as a fraction of the diameter.
+    pub scatter: f32,
+    /// Random per-dab size reduction (0..1).
+    pub size_jitter: f32,
+    /// Random per-dab flow reduction (0..1).
+    pub opacity_jitter: f32,
+    /// Stroke smoothing (0..1): how lazily the brush follows the pointer.
+    pub smoothing: f32,
 }
 
 impl Default for BrushTip {
     fn default() -> Self {
-        BrushTip { size: 30.0, hardness: 0.8, spacing: 0.12, aliased: false }
+        BrushTip {
+            size: 30.0,
+            hardness: 0.8,
+            spacing: 0.12,
+            aliased: false,
+            angle: 0.0,
+            roundness: 1.0,
+            scatter: 0.0,
+            size_jitter: 0.0,
+            opacity_jitter: 0.0,
+            smoothing: 0.0,
+        }
     }
+}
+
+/// Built-in brush presets.
+pub fn brush_presets() -> Vec<(&'static str, BrushTip)> {
+    let d = BrushTip::default();
+    vec![
+        ("Hard Round", BrushTip { hardness: 1.0, spacing: 0.1, ..d }),
+        ("Soft Round", BrushTip { hardness: 0.0, spacing: 0.1, ..d }),
+        ("Airbrush", BrushTip { size: 80.0, hardness: 0.0, spacing: 0.05, ..d }),
+        ("Calligraphy", BrushTip { hardness: 0.95, angle: 45.0, roundness: 0.22, spacing: 0.04, ..d }),
+        (
+            "Chalk",
+            BrushTip {
+                hardness: 0.6,
+                roundness: 0.7,
+                scatter: 0.25,
+                size_jitter: 0.4,
+                opacity_jitter: 0.6,
+                spacing: 0.15,
+                ..d
+            },
+        ),
+        (
+            "Spray",
+            BrushTip {
+                size: 10.0,
+                hardness: 0.7,
+                scatter: 2.5,
+                size_jitter: 0.7,
+                opacity_jitter: 0.5,
+                spacing: 0.3,
+                ..d
+            },
+        ),
+        ("Ink", BrushTip { size: 8.0, hardness: 1.0, spacing: 0.05, smoothing: 0.6, ..d }),
+        ("Marker", BrushTip { size: 24.0, hardness: 0.9, roundness: 0.55, angle: -30.0, spacing: 0.06, ..d }),
+    ]
 }
 
 impl BrushTip {
@@ -126,6 +187,8 @@ pub struct StrokeEngine {
     carry: Option<Vec<[f32; 4]>>,
     width: u32,
     height: u32,
+    dabs: u32,
+    smooth: Option<(f32, f32)>,
 }
 
 impl StrokeEngine {
@@ -151,6 +214,8 @@ impl StrokeEngine {
             carry: None,
             width: w,
             height: h,
+            dabs: 0,
+            smooth: None,
         }
     }
 
@@ -160,6 +225,15 @@ impl StrokeEngine {
 
     /// Extend the stroke to (x, y); returns the canvas area that changed.
     pub fn stroke_to(&mut self, target: &mut Image, x: f32, y: f32, pressure: f32) -> Rect {
+        // Smoothing: the brush trails the pointer.
+        let (x, y) = match self.smooth {
+            Some((sx, sy)) if self.tip.smoothing > 0.0 => {
+                let k = 1.0 - self.tip.smoothing.clamp(0.0, 0.95);
+                (sx + (x - sx) * k, sy + (y - sy) * k)
+            }
+            _ => (x, y),
+        };
+        self.smooth = Some((x, y));
         let step = (self.tip.size * self.tip.spacing).max(1.0);
         let mut dirty = Rect::default();
         match self.last {
@@ -188,7 +262,23 @@ impl StrokeEngine {
     }
 
     fn dab(&mut self, target: &mut Image, cx: f32, cy: f32, pressure: f32) -> Rect {
-        let tip = BrushTip { size: (self.tip.size * pressure.clamp(0.05, 1.0)).max(1.0), ..self.tip };
+        // Deterministic per-dab randomness, so strokes replay identically.
+        self.dabs = self.dabs.wrapping_add(1);
+        let n = self.dabs;
+        let rnd = |k: u32| crate::blend::pixel_noise(n, k.wrapping_mul(7919));
+        let jitter = 1.0 - self.tip.size_jitter.clamp(0.0, 1.0) * rnd(1);
+        let size = (self.tip.size * pressure.clamp(0.05, 1.0) * jitter).max(1.0);
+        let (cx, cy) = if self.tip.scatter > 0.0 {
+            let a = rnd(2) * std::f32::consts::TAU;
+            let d = rnd(3) * self.tip.scatter * self.tip.size;
+            (cx + a.cos() * d, cy + a.sin() * d)
+        } else {
+            (cx, cy)
+        };
+        let flow_k = 1.0 - self.tip.opacity_jitter.clamp(0.0, 1.0) * rnd(4);
+        let tip = BrushTip { size, ..self.tip };
+        let (sa, ca) = tip.angle.to_radians().sin_cos();
+        let round = tip.roundness.clamp(0.05, 1.0);
         let r = tip.size / 2.0 + 1.0;
         let rect = Rect::new(
             (cx - r).floor() as i32,
@@ -203,7 +293,11 @@ impl StrokeEngine {
         let w = self.width as usize;
         let sel = self.selection.as_ref();
         let cov_at = |x: i32, y: i32| {
-            let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+            let (dx, dy) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
+            // Into the tip's frame: rotate, then stretch the short axis.
+            let u = dx * ca + dy * sa;
+            let v = (-dx * sa + dy * ca) / round;
+            let d = (u * u + v * v).sqrt();
             tip.falloff(d) * sel.map_or(1.0, |m| m.get(x as u32, y as u32) as f32 / 255.0)
         };
 
@@ -214,7 +308,7 @@ impl StrokeEngine {
             | StrokeKind::Heal { .. }
             | StrokeKind::Pattern { .. }
             | StrokeKind::BackgroundErase { .. } => {
-                let flow = self.flow;
+                let flow = self.flow * flow_k;
                 for y in rect.y..rect.bottom() {
                     for x in rect.x..rect.right() {
                         let c = cov_at(x, y);
@@ -559,7 +653,7 @@ mod tests {
     #[test]
     fn overlapping_dabs_respect_opacity() {
         let mut img = Image::filled(40, 40, Rgba::WHITE);
-        let tip = BrushTip { size: 10.0, hardness: 1.0, spacing: 0.05, aliased: false };
+        let tip = BrushTip { size: 10.0, hardness: 1.0, spacing: 0.05, ..Default::default() };
         let mut s = StrokeEngine::new(
             &img,
             StrokeKind::Paint { color: Rgba::BLACK, blend: BlendMode::Normal },
@@ -613,6 +707,48 @@ mod tests {
         red_eye(&mut img, Rect::new(0, 0, 20, 20), 0.5);
         let c = img.get(10, 10);
         assert!(c.r() < 60, "{c:?}");
+    }
+
+    #[test]
+    fn flat_tip_is_an_ellipse() {
+        let mut img = Image::filled(60, 60, Rgba::WHITE);
+        let tip = BrushTip { size: 40.0, hardness: 1.0, roundness: 0.25, angle: 0.0, ..Default::default() };
+        let mut s = StrokeEngine::new(
+            &img,
+            StrokeKind::Paint { color: Rgba::BLACK, blend: BlendMode::Normal },
+            tip,
+            1.0,
+            1.0,
+            None,
+        );
+        s.stroke_to(&mut img, 30.0, 30.0, 1.0);
+        assert_eq!(img.get(45, 30), Rgba::BLACK, "wide along the angle");
+        assert_eq!(img.get(30, 45), Rgba::WHITE, "thin across it");
+    }
+
+    #[test]
+    fn scatter_and_jitter_are_deterministic() {
+        let tip = brush_presets().into_iter().find(|p| p.0 == "Spray").unwrap().1;
+        let run = || {
+            let mut img = Image::filled(80, 80, Rgba::WHITE);
+            let mut s = StrokeEngine::new(
+                &img,
+                StrokeKind::Paint { color: Rgba::BLACK, blend: BlendMode::Normal },
+                tip,
+                1.0,
+                1.0,
+                None,
+            );
+            for x in 10..70 {
+                s.stroke_to(&mut img, x as f32, 40.0, 1.0);
+            }
+            img
+        };
+        let (a, b) = (run(), run());
+        assert_eq!(a, b);
+        // Scattered dabs land off the stroke line.
+        let off_line = (0..80).flat_map(|x| [(x, 25u32), (x, 55u32)]).any(|(x, y)| a.get(x, y) != Rgba::WHITE);
+        assert!(off_line);
     }
 
     #[test]

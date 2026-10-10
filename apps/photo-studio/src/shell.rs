@@ -316,7 +316,75 @@ fn tabs(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
     }
 }
 
+/// Draw a short sample stroke with `tip`, for the brush popover.
+fn tip_preview(ui: &mut Ui, tip: &studio_core::paint::BrushTip) {
+    use studio_core::paint::{StrokeEngine, StrokeKind};
+    let (w, h) = (240u32, 56u32);
+    let mut img = studio_core::Image::new(w, h);
+    let mut t = *tip;
+    t.size = t.size.clamp(2.0, 36.0);
+    let col = if ui.visuals().dark_mode { studio_core::Rgba::WHITE } else { studio_core::Rgba::BLACK };
+    let mut s = StrokeEngine::new(
+        &img,
+        StrokeKind::Paint { color: col, blend: studio_core::BlendMode::Normal },
+        t,
+        1.0,
+        1.0,
+        None,
+    );
+    for i in 0..=60 {
+        let x = 16.0 + i as f32 * (w as f32 - 32.0) / 60.0;
+        let y = h as f32 / 2.0 + (i as f32 / 60.0 * std::f32::consts::TAU).sin() * 12.0;
+        s.stroke_to(&mut img, x, y, 1.0);
+    }
+    let tex = ui.ctx().load_texture("tip-preview", crate::doc::to_color_image(&img), egui::TextureOptions::LINEAR);
+    ui.add(egui::Image::new((tex.id(), egui::vec2(w as f32, h as f32))));
+}
+
 fn tip_controls(ui: &mut Ui, tip: &mut studio_core::paint::BrushTip, show_hardness: bool) {
+    let r = ui.button(format!("{} Brush", ph::PAINT_BRUSH_BROAD)).on_hover_text("Presets and brush settings");
+    egui::Popup::from_toggle_button_response(&r).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(
+        |ui| {
+            ui.set_width(260.0);
+            ui.label(egui::RichText::new("Presets").font(crate::theme::medium(12.5)));
+            ui.horizontal_wrapped(|ui| {
+                for (name, preset) in studio_core::paint::brush_presets() {
+                    if ui.small_button(name).clicked() {
+                        let size = tip.size;
+                        *tip = preset;
+                        // Keep the user's size unless the preset is about size.
+                        if !matches!(name, "Airbrush" | "Spray" | "Ink") {
+                            tip.size = size;
+                        }
+                    }
+                }
+            });
+            ui.separator();
+            tip_preview(ui, tip);
+            let pct_slider = |ui: &mut Ui, label: &str, v: &mut f32| {
+                let mut p = *v * 100.0;
+                if crate::widgets::slider_row(ui, label, &mut p, 0.0..=100.0, "%", 0) {
+                    *v = p / 100.0;
+                }
+            };
+            crate::widgets::slider_row(ui, "Size", &mut tip.size, 1.0..=2500.0, " px", 0);
+            pct_slider(ui, "Hardness", &mut tip.hardness);
+            let mut sp = tip.spacing * 100.0;
+            if crate::widgets::slider_row(ui, "Spacing", &mut sp, 1.0..=300.0, "%", 0) {
+                tip.spacing = sp / 100.0;
+            }
+            crate::widgets::slider_row(ui, "Angle", &mut tip.angle, -180.0..=180.0, "°", 0);
+            pct_slider(ui, "Roundness", &mut tip.roundness);
+            tip.roundness = tip.roundness.max(0.05);
+            let mut sc = tip.scatter * 100.0;
+            if crate::widgets::slider_row(ui, "Scatter", &mut sc, 0.0..=500.0, "%", 0) {
+                tip.scatter = sc / 100.0;
+            }
+            pct_slider(ui, "Size jitter", &mut tip.size_jitter);
+            pct_slider(ui, "Opacity jitter", &mut tip.opacity_jitter);
+            pct_slider(ui, "Smoothing", &mut tip.smoothing);
+        },
+    );
     label_dim(ui, "Size");
     ui.add(egui::DragValue::new(&mut tip.size).range(1.0..=2500.0).suffix(" px").speed(0.5));
     if show_hardness {

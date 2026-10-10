@@ -1775,9 +1775,31 @@ fn draw_overlays(app: &App, painter: &egui::Painter, view: &View, pointer: Optio
             } else {
                 app.opts.tip.size
             };
+            let tip = if matches!(app.tool, Tool::Eraser | Tool::BackgroundEraser) {
+                app.opts.eraser_tip
+            } else {
+                app.opts.tip
+            };
             let r = (size * view.zoom / 2.0).max(1.5);
-            painter.circle_stroke(p, r, Stroke::new(1.0, Color32::from_black_alpha(200)));
-            painter.circle_stroke(p, r + 1.0, Stroke::new(1.0, Color32::from_white_alpha(200)));
+            if (tip.roundness - 1.0).abs() < 0.01 {
+                painter.circle_stroke(p, r, Stroke::new(1.0, Color32::from_black_alpha(200)));
+                painter.circle_stroke(p, r + 1.0, Stroke::new(1.0, Color32::from_white_alpha(200)));
+            } else {
+                // The tip's ellipse, rotated to its angle.
+                let (sa, ca) = tip.angle.to_radians().sin_cos();
+                let rv = r * tip.roundness.clamp(0.05, 1.0);
+                let ring = |k: f32| -> Vec<Pos2> {
+                    (0..48)
+                        .map(|i| {
+                            let t = i as f32 / 48.0 * std::f32::consts::TAU;
+                            let (u, v) = ((r + k) * t.cos(), (rv + k) * t.sin());
+                            p + Vec2::new(u * ca - v * sa, u * sa + v * ca)
+                        })
+                        .collect()
+                };
+                painter.add(Shape::closed_line(ring(0.0), Stroke::new(1.0, Color32::from_black_alpha(200))));
+                painter.add(Shape::closed_line(ring(1.0), Stroke::new(1.0, Color32::from_white_alpha(200))));
+            }
             if r < 4.0 {
                 painter
                     .line_segment([p - Vec2::new(5.0, 0.0), p + Vec2::new(5.0, 0.0)], Stroke::new(1.0, Color32::WHITE));
