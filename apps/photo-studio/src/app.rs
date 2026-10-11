@@ -322,9 +322,10 @@ impl App {
             .add_filter("All supported", io::OPEN_EXTENSIONS)
             .add_filter("Photo Studio project", &[io::PROJECT_EXTENSION])
             .add_filter("Photoshop", &["psd", "psb"])
+            .add_filter("Paint.NET", &["pdn"])
             .add_filter("OpenRaster", &["ora"])
             .add_filter("SVG", &["svg"])
-            .add_filter("Images", &io::OPEN_EXTENSIONS[3..]);
+            .add_filter("Images", &io::OPEN_EXTENSIONS[4..]);
         if let Some(dir) = self.dialog_dir() {
             d = d.set_directory(dir);
         }

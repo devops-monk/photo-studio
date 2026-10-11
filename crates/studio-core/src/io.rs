@@ -34,8 +34,8 @@ pub type Result<T> = std::result::Result<T, IoError>;
 
 /// File extensions the app can open.
 pub const OPEN_EXTENSIONS: &[&str] = &[
-    "pstudio", "psd", "psb", "ora", "svg", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "tga", "ico",
-    "qoi", "ppm", "pgm", "pnm", "exr", "hdr", "heic", "heif", "avif",
+    "pstudio", "psd", "psb", "pdn", "ora", "svg", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "tga",
+    "ico", "qoi", "ppm", "pgm", "pnm", "exr", "hdr", "heic", "heif", "avif",
 ];
 
 /// Flat formats the app can export to.
@@ -89,6 +89,7 @@ pub fn open(path: &Path) -> Result<Document> {
         "pstudio" => load_project(path),
         "psd" | "psb" => read_psd(&std::fs::read(path)?),
         "ora" => crate::formats::read_ora(&std::fs::read(path)?),
+        "pdn" => crate::pdn::read(&std::fs::read(path)?),
         e if crate::formats::SYSTEM_DECODED.contains(&e) => {
             // The image crate may handle it (AVIF with native support); otherwise the OS does.
             let img = read_image(path).or_else(|_| crate::formats::decode_with_system(path))?;
