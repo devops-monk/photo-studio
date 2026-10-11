@@ -879,8 +879,15 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
                     let mut hits: Vec<(i32, String, Action)> = crate::menus::all_commands()
                         .into_iter()
                         .filter_map(|a| {
-                            let label = crate::menus::palette_label(&a);
-                            crate::menus::fuzzy(query, &label).map(|s| (s, label, a))
+                            // Match the translated label and the English one.
+                            let english = crate::menus::palette_label(&a);
+                            let label = crate::i18n::tr(&english).into_owned();
+                            let score = match (crate::menus::fuzzy(query, &label), crate::menus::fuzzy(query, &english))
+                            {
+                                (Some(x), Some(y)) => Some(x.max(y)),
+                                (x, y) => x.or(y),
+                            };
+                            score.map(|s| (s, label, a))
                         })
                         .collect();
                     hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));

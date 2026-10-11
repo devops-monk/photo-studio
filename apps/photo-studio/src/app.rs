@@ -40,6 +40,8 @@ pub struct Prefs {
     pub grid_size: f32,
     /// ICC profile for View › Proof Colors.
     pub proof_profile: Option<PathBuf>,
+    /// Interface language; None follows the system.
+    pub language: Option<crate::i18n::Lang>,
 }
 
 impl Default for Prefs {
@@ -63,6 +65,7 @@ impl Default for Prefs {
             snap: true,
             grid_size: 64.0,
             proof_profile: None,
+            language: None,
         }
     }
 }
@@ -139,6 +142,12 @@ impl App {
         crate::theme::install_fonts(&cc.egui_ctx);
         let prefs: Prefs = cc.storage.and_then(|s| eframe::get_value(s, "prefs")).unwrap_or_default();
         crate::theme::apply(&cc.egui_ctx, prefs.theme);
+        crate::i18n::set(prefs.language.unwrap_or_else(|| {
+            ["LC_ALL", "LC_MESSAGES", "LANG"]
+                .iter()
+                .find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty() && !cfg!(test)))
+                .map_or(crate::i18n::Lang::English, |v| crate::i18n::Lang::from_locale(&v))
+        }));
         let mut app = App {
             docs: Vec::new(),
             active: 0,
@@ -1407,6 +1416,10 @@ impl App {
             Action::ClearGuides => self.edit("Clear Guides", |d| d.guides.clear()),
             Action::CommandPalette => self.dialog = Some(Dialog::CommandPalette { query: String::new(), selected: 0 }),
             Action::ToggleSelectionEdges => self.show_edges = !self.show_edges,
+            Action::SetLanguage(l) => {
+                crate::i18n::set(l);
+                self.prefs.language = Some(l);
+            }
             Action::ToggleTheme => {
                 let dark = ctx.global_style().visuals.dark_mode;
                 self.prefs.theme = if dark { ThemeMode::Light } else { ThemeMode::Dark };

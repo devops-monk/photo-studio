@@ -526,6 +526,14 @@ fn screenshots() {
         if variant == "palette" {
             h.state_mut().dialog = Some(crate::dialogs::Dialog::CommandPalette { query: "blur".into(), selected: 0 });
         }
+        if let Ok(l) = std::env::var("PHOTO_STUDIO_LANG") {
+            crate::i18n::set(crate::i18n::Lang::from_locale(&l));
+            if variant == "1" {
+                // Open the Layer menu to show translated items.
+                h.run_steps(2);
+                h.get_by_label(&crate::i18n::tr("Layer")).click();
+            }
+        }
         h.run_steps(8);
         let img = h.render().expect("render");
         img.save(out.join(format!("{name}.png"))).unwrap();
@@ -1219,4 +1227,26 @@ fn soft_proof_toggles() {
     h.run_steps(2);
     assert!(!h.state().tab().unwrap().proof_on);
     std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn switch_language_from_view_menu() {
+    let mut h = harness();
+    h.get_by_label("View").click();
+    h.run_steps(2);
+    h.get_by_label_contains("Language").hover();
+    h.run_steps(3);
+    h.get_by_label_contains("Deutsch").click();
+    h.run_steps(3);
+    assert_eq!(crate::i18n::current(), crate::i18n::Lang::German);
+    assert_eq!(h.state().prefs.language, Some(crate::i18n::Lang::German));
+    // The menu bar, panels and tool label are now German.
+    assert!(h.query_by_label("Datei").is_some(), "File menu");
+    assert!(h.query_by_label("Ebenen").is_some(), "Layers panel");
+    assert!(h.query_by_label("Pinsel").is_some(), "Brush tool label");
+    // Menu items too.
+    h.get_by_label("Ebene").click();
+    h.run_steps(2);
+    assert!(h.query_by_label_contains("Neue Ebene").is_some());
+    crate::i18n::set(crate::i18n::Lang::English);
 }

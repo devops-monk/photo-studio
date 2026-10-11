@@ -251,10 +251,14 @@ fn color_panel(app: &mut App, ui: &mut Ui) {
             std::mem::swap(&mut app.fg, &mut app.bg);
         }
         ui.vertical(|ui| {
-            if ui.small_button(format!("{} Swap", ph::ARROWS_LEFT_RIGHT)).on_hover_text("Swap colors (X)").clicked() {
+            if ui
+                .small_button(format!("{} {}", ph::ARROWS_LEFT_RIGHT, crate::i18n::tr("Swap")))
+                .on_hover_text("Swap colors (X)")
+                .clicked()
+            {
                 std::mem::swap(&mut app.fg, &mut app.bg);
             }
-            if ui.small_button("Default").on_hover_text("Black and white (D)").clicked() {
+            if ui.small_button(crate::i18n::tr("Default")).on_hover_text("Black and white (D)").clicked() {
                 app.fg = Rgba::BLACK;
                 app.bg = Rgba::WHITE;
             }
@@ -665,7 +669,7 @@ fn history(app: &mut App, ui: &mut Ui) {
 fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
     let t = Tokens::get(ui.ctx());
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Layers").font(crate::theme::medium(13.0)));
+        ui.label(egui::RichText::new(crate::i18n::tr("Layers")).font(crate::theme::medium(13.0)));
     });
     if app.docs.is_empty() {
         label_dim(ui, "Open or create an image to see its layers.");
@@ -681,21 +685,31 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
         let ai = tab.doc.active;
         let layer = &mut tab.doc.layers[ai];
         let mut changed = false;
+        // The blend menu gives up width so longer translated labels still fit on the row.
+        let label_w = |ui: &Ui, s: &str| {
+            let font = egui::FontId::proportional(12.0);
+            ui.painter().layout_no_wrap(crate::i18n::tr(s).into_owned(), font, egui::Color32::WHITE).size().x
+        };
+        let fixed = label_w(ui, "Opacity") + label_w(ui, "layer|Fill") + 2.0 * 52.0 + 6.0 * ui.spacing().item_spacing.x;
+        let combo_w = (ui.available_width() - fixed - 24.0).clamp(64.0, 120.0);
         ui.horizontal(|ui| {
             ui.scope(|ui| {
-                egui::ComboBox::from_id_salt("blend-mode").width(120.0).selected_text(layer.blend.label()).show_ui(
-                    ui,
-                    |ui| {
+                egui::ComboBox::from_id_salt("blend-mode")
+                    .width(combo_w)
+                    .selected_text(crate::i18n::tr(layer.blend.label()))
+                    .show_ui(ui, |ui| {
                         for m in BlendMode::MENU {
                             match m {
-                                Some(m) => changed |= ui.selectable_value(&mut layer.blend, *m, m.label()).changed(),
+                                Some(m) => {
+                                    changed |=
+                                        ui.selectable_value(&mut layer.blend, *m, crate::i18n::tr(m.label())).changed()
+                                }
                                 None => {
                                     ui.separator();
                                 }
                             }
                         }
-                    },
-                );
+                    });
             });
             let mut pct = layer.opacity * 100.0;
             label_dim(ui, "Opacity");
@@ -704,7 +718,7 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 changed = true;
             }
             let mut fill = layer.fill_opacity * 100.0;
-            label_dim(ui, "Fill").on_hover_text("Content opacity; layer styles stay at full strength");
+            label_dim(ui, "layer|Fill").on_hover_text("Content opacity; layer styles stay at full strength");
             if ui.add(egui::DragValue::new(&mut fill).range(0.0..=100.0).suffix("%").speed(1.0)).changed() {
                 layer.fill_opacity = fill / 100.0;
                 changed = true;
@@ -798,7 +812,7 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     l.mask_enabled,
                     l.clip,
                     icon,
-                    l.kind.badge(),
+                    &crate::i18n::tr(l.kind.badge()),
                     l.styles.any(),
                     l.locked,
                     l.id,

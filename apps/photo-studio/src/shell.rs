@@ -353,7 +353,9 @@ fn tip_preview(ui: &mut Ui, tip: &studio_core::paint::BrushTip) {
 }
 
 fn tip_controls(ui: &mut Ui, tip: &mut studio_core::paint::BrushTip, show_hardness: bool) {
-    let r = ui.button(format!("{} Brush", ph::PAINT_BRUSH_BROAD)).on_hover_text("Presets and brush settings");
+    let r = ui
+        .button(format!("{} {}", ph::PAINT_BRUSH_BROAD, crate::i18n::tr("Brush")))
+        .on_hover_text("Presets and brush settings");
     egui::Popup::from_toggle_button_response(&r).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(
         |ui| {
             egui::ScrollArea::vertical().max_height(560.0).show(ui, |ui| tip_settings(ui, tip));
@@ -453,9 +455,9 @@ fn pct(ui: &mut Ui, label: &str, v: &mut f32) {
 }
 
 fn blend_combo(ui: &mut Ui, id: &str, m: &mut BlendMode) {
-    egui::ComboBox::from_id_salt(id).width(110.0).selected_text(m.label()).show_ui(ui, |ui| {
+    egui::ComboBox::from_id_salt(id).width(110.0).selected_text(crate::i18n::tr(m.label())).show_ui(ui, |ui| {
         for b in BlendMode::all() {
-            ui.selectable_value(m, b, b.label());
+            ui.selectable_value(m, b, crate::i18n::tr(b.label()));
         }
     });
 }
@@ -479,7 +481,7 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         ui.label(egui::RichText::new(app.tool.icon()).size(16.0).color(t.accent));
-        ui.label(egui::RichText::new(app.tool.label()).font(crate::theme::medium(13.0)));
+        ui.label(egui::RichText::new(crate::i18n::tr(app.tool.label())).font(crate::theme::medium(13.0)));
         ui.add(egui::Separator::default().vertical());
         let o = &mut app.opts;
         match app.tool {
@@ -874,9 +876,9 @@ fn toolbar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     let selected = g.contains(&app.tool);
                     let key = g[0].key().map(|k| format!(" ({})", k.name())).unwrap_or_default();
                     let tip = if g.len() > 1 {
-                        format!("{}{}\nRight-click for more", cur.label(), key)
+                        format!("{}{}\nRight-click for more", crate::i18n::tr(cur.label()), key)
                     } else {
-                        format!("{}{}", cur.label(), key)
+                        format!("{}{}", crate::i18n::tr(cur.label()), key)
                     };
                     let r = icon_button(ui, cur.icon(), &tip, selected, 32.0);
                     if g.len() > 1 {
@@ -893,7 +895,7 @@ fn toolbar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     if g.len() > 1 {
                         egui::Popup::context_menu(&r).show(|ui| {
                             for tool in g.iter() {
-                                let label = format!("{}  {}", tool.icon(), tool.label());
+                                let label = format!("{}  {}", tool.icon(), crate::i18n::tr(tool.label()));
                                 if ui.selectable_label(app.tool == *tool, label).clicked() {
                                     app.set_tool(*tool);
                                     ui.close();

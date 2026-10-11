@@ -7,6 +7,7 @@ use studio_core::transform::Rotation;
 
 use crate::actions::{Action, ModifyKind, shortcut_text};
 use crate::app::App;
+use crate::i18n::tr;
 
 /// Human-readable name of an action (menus and the shortcuts sheet).
 pub fn action_label(a: &Action) -> String {
@@ -159,6 +160,7 @@ pub fn action_label(a: &Action) -> String {
         Action::CommandPalette => "Search Commands…".into(),
         Action::ToggleSelectionEdges => "Selection Edges".into(),
         Action::ToggleTheme => "Toggle Light / Dark".into(),
+        Action::SetLanguage(l) => l.native_name().into(),
         Action::About => "About Photo Studio".into(),
         Action::Shortcuts => "Keyboard Shortcuts".into(),
         Action::Website => "Photo Studio Website".into(),
@@ -171,7 +173,8 @@ pub fn action_label(a: &Action) -> String {
 
 fn item(ui: &mut Ui, out: &mut Vec<Action>, a: Action, enabled: bool) {
     let sc = shortcut_text(ui.ctx(), &a);
-    let r = ui.add_enabled(enabled, egui::Button::new(action_label(&a)).shortcut_text(sc));
+    let label = action_label(&a);
+    let r = ui.add_enabled(enabled, egui::Button::new(tr(&label)).shortcut_text(sc));
     if r.clicked() {
         out.push(a);
         ui.close();
@@ -180,7 +183,7 @@ fn item(ui: &mut Ui, out: &mut Vec<Action>, a: Action, enabled: bool) {
 
 fn check(ui: &mut Ui, out: &mut Vec<Action>, a: Action, on: bool) {
     let sc = shortcut_text(ui.ctx(), &a);
-    let label = format!("{}  {}", if on { "✓" } else { "    " }, action_label(&a));
+    let label = format!("{}  {}", if on { "✓" } else { "    " }, tr(&action_label(&a)));
     if ui.add(egui::Button::new(label).shortcut_text(sc)).clicked() {
         out.push(a);
         ui.close();
@@ -197,11 +200,11 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
     let has_mask = tab.and_then(|t| t.doc.active_layer()).is_some_and(|l| l.mask.is_some());
 
     egui::MenuBar::new().ui(ui, |ui| {
-        ui.menu_button("File", |ui| {
+        ui.menu_button(tr("File"), |ui| {
             item(ui, out, Action::New, true);
             item(ui, out, Action::NewFromClipboard, true);
             item(ui, out, Action::Open, true);
-            ui.menu_button("Open Recent", |ui| {
+            ui.menu_button(tr("Open Recent"), |ui| {
                 if app.prefs.recent.is_empty() {
                     ui.add_enabled(false, egui::Button::new("No recent files"));
                 }
@@ -221,7 +224,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::ExportAs, doc);
             item(ui, out, Action::QuickExportPng, doc);
             item(ui, out, Action::ExportSlices, tab.is_some_and(|t| !t.doc.annotations.slices.is_empty()));
-            ui.menu_button("Automate", |ui| {
+            ui.menu_button(tr("Automate"), |ui| {
                 item(ui, out, Action::Batch, true);
                 if app.recording.is_some() {
                     item(ui, out, Action::StopRecording, true);
@@ -232,7 +235,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             ui.separator();
             item(ui, out, Action::Quit, true);
         });
-        ui.menu_button("Edit", |ui| {
+        ui.menu_button(tr("Edit"), |ui| {
             let undo =
                 tab.and_then(|t| t.history.undo_label()).map(|l| format!("Undo {l}")).unwrap_or_else(|| "Undo".into());
             let redo =
@@ -266,7 +269,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             ui.separator();
             item(ui, out, Action::FreeTransform, doc);
             item(ui, out, Action::DefinePattern, has_sel);
-            ui.menu_button("Transform", |ui| {
+            ui.menu_button(tr("Transform"), |ui| {
                 item(ui, out, Action::RotateLayer(Rotation::Half), doc);
                 item(ui, out, Action::RotateLayer(Rotation::Cw90), doc);
                 item(ui, out, Action::RotateLayer(Rotation::Ccw90), doc);
@@ -277,8 +280,8 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             ui.separator();
             item(ui, out, Action::Preferences, true);
         });
-        ui.menu_button("Image", |ui| {
-            ui.menu_button("Adjustments", |ui| {
+        ui.menu_button(tr("Image"), |ui| {
+            ui.menu_button(tr("Adjustments"), |ui| {
                 for a in Adjustment::catalog() {
                     item(ui, out, Action::Adjust(a), doc);
                 }
@@ -293,7 +296,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             ui.separator();
             item(ui, out, Action::ImageSize, doc);
             item(ui, out, Action::CanvasSize, doc);
-            ui.menu_button("Image Rotation", |ui| {
+            ui.menu_button(tr("Image Rotation"), |ui| {
                 item(ui, out, Action::RotateCanvas(Rotation::Half), doc);
                 item(ui, out, Action::RotateCanvas(Rotation::Cw90), doc);
                 item(ui, out, Action::RotateCanvas(Rotation::Ccw90), doc);
@@ -307,14 +310,14 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             ui.separator();
             item(ui, out, Action::DuplicateImage, doc);
         });
-        ui.menu_button("Layer", |ui| {
+        ui.menu_button(tr("Layer"), |ui| {
             item(ui, out, Action::NewLayer, doc);
-            ui.menu_button("New Fill Layer", |ui| {
+            ui.menu_button(tr("New Fill Layer"), |ui| {
                 item(ui, out, Action::NewFillSolid, doc);
                 item(ui, out, Action::NewFillGradient, doc);
                 item(ui, out, Action::NewFillPattern, doc);
             });
-            ui.menu_button("New Adjustment Layer", |ui| {
+            ui.menu_button(tr("New Adjustment Layer"), |ui| {
                 for a in Adjustment::catalog() {
                     item(ui, out, Action::NewAdjustmentLayer(a), doc);
                 }
@@ -329,11 +332,11 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::LayerViaCopy, doc);
             item(ui, out, Action::LayerViaCut, doc);
             ui.separator();
-            ui.menu_button("Layer Style", |ui| {
+            ui.menu_button(tr("Layer Style"), |ui| {
                 item(ui, out, Action::LayerStyle, doc);
                 item(ui, out, Action::ClearLayerStyle, doc);
             });
-            ui.menu_button("Layer Mask", |ui| {
+            ui.menu_button(tr("Layer Mask"), |ui| {
                 item(ui, out, Action::MaskRevealAll, doc);
                 item(ui, out, Action::MaskHideAll, doc);
                 item(ui, out, Action::MaskFromSelection, has_sel);
@@ -355,7 +358,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::ConvertToSmart, doc);
             item(ui, out, Action::Rasterize, doc);
             ui.separator();
-            ui.menu_button(if has_sel { "Align to Selection" } else { "Align to Canvas" }, |ui| {
+            ui.menu_button(tr(if has_sel { "Align to Selection" } else { "Align to Canvas" }), |ui| {
                 for (h, v) in [
                     (Some(-1), None),
                     (Some(0), None),
@@ -370,7 +373,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
                 item(ui, out, Action::Distribute(true), doc);
                 item(ui, out, Action::Distribute(false), doc);
             });
-            ui.menu_button("Arrange", |ui| {
+            ui.menu_button(tr("Arrange"), |ui| {
                 item(ui, out, Action::BringToFront, doc);
                 item(ui, out, Action::BringForward, doc);
                 item(ui, out, Action::SendBackward, doc);
@@ -381,7 +384,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::MergeVisible, doc && multi);
             item(ui, out, Action::Flatten, doc);
         });
-        ui.menu_button("Select", |ui| {
+        ui.menu_button(tr("Select"), |ui| {
             item(ui, out, Action::SelectAll, doc);
             item(ui, out, Action::Deselect, has_sel);
             item(ui, out, Action::Reselect, doc && app.last_selection.is_some());
@@ -391,7 +394,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::ColorRange, doc);
             item(ui, out, Action::LoadLayerSelection, doc);
             item(ui, out, Action::SaveSelection, has_sel);
-            ui.menu_button("Load Selection", |ui| {
+            ui.menu_button(tr("Load Selection"), |ui| {
                 let channels: Vec<String> =
                     tab.map(|t| t.doc.channels.iter().map(|c| c.0.clone()).collect()).unwrap_or_default();
                 if channels.is_empty() {
@@ -406,7 +409,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             });
             check(ui, out, Action::ToggleQuickMask, app.quick_mask);
             ui.separator();
-            ui.menu_button("Modify", |ui| {
+            ui.menu_button(tr("Modify"), |ui| {
                 for k in [
                     ModifyKind::Border,
                     ModifyKind::Smooth,
@@ -418,7 +421,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
                 }
             });
         });
-        ui.menu_button("Filter", |ui| {
+        ui.menu_button(tr("Filter"), |ui| {
             let last = app
                 .last_filter
                 .as_ref()
@@ -443,7 +446,7 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
                 });
             }
         });
-        ui.menu_button("View", |ui| {
+        ui.menu_button(tr("View"), |ui| {
             item(ui, out, Action::ZoomIn, doc);
             item(ui, out, Action::ZoomOut, doc);
             item(ui, out, Action::FitOnScreen, doc);
@@ -465,8 +468,13 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             check(ui, out, Action::ToggleSelectionEdges, app.show_edges);
             ui.separator();
             item(ui, out, Action::ToggleTheme, true);
+            ui.menu_button(tr("Language"), |ui| {
+                for l in crate::i18n::Lang::ALL {
+                    check(ui, out, Action::SetLanguage(l), crate::i18n::current() == l);
+                }
+            });
         });
-        ui.menu_button("Help", |ui| {
+        ui.menu_button(tr("Help"), |ui| {
             item(ui, out, Action::CommandPalette, true);
             item(ui, out, Action::Shortcuts, true);
             item(ui, out, Action::Website, true);

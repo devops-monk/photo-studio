@@ -46,15 +46,21 @@ pub fn small_button(ui: &mut Ui, icon: &str, tooltip: &str) -> Response {
 pub fn primary_button(ui: &mut Ui, text: &str) -> Response {
     let t = Tokens::get(ui.ctx());
     ui.add(
-        egui::Button::new(egui::RichText::new(text).color(t.accent_text).font(crate::theme::medium(13.0)))
-            .fill(t.accent)
-            .corner_radius(CornerRadius::same(RADIUS))
-            .min_size(egui::vec2(84.0, 28.0)),
+        egui::Button::new(
+            egui::RichText::new(crate::i18n::tr(text)).color(t.accent_text).font(crate::theme::medium(13.0)),
+        )
+        .fill(t.accent)
+        .corner_radius(CornerRadius::same(RADIUS))
+        .min_size(egui::vec2(84.0, 28.0)),
     )
 }
 
 pub fn secondary_button(ui: &mut Ui, text: &str) -> Response {
-    ui.add(egui::Button::new(text).corner_radius(CornerRadius::same(RADIUS)).min_size(egui::vec2(84.0, 28.0)))
+    ui.add(
+        egui::Button::new(crate::i18n::tr(text))
+            .corner_radius(CornerRadius::same(RADIUS))
+            .min_size(egui::vec2(84.0, 28.0)),
+    )
 }
 
 /// A titled, collapsible card used to group panel content.
@@ -73,7 +79,7 @@ pub fn card<R>(ui: &mut Ui, id: &str, title: &str, default_open: bool, add: impl
             let header = ui.horizontal(|ui| {
                 let caret = if open { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_RIGHT };
                 ui.label(egui::RichText::new(caret).color(t.text_faint).size(11.0));
-                ui.label(egui::RichText::new(title).font(crate::theme::medium(12.5)).color(t.text));
+                ui.label(egui::RichText::new(crate::i18n::tr(title)).font(crate::theme::medium(12.5)).color(t.text));
                 ui.allocate_space(egui::vec2(ui.available_width(), 1.0));
             });
             let r = ui.interact(header.response.rect, id.with("hdr"), Sense::click());
@@ -246,5 +252,6 @@ pub fn swatch(ui: &mut Ui, c: Rgba, size: Vec2, selected: bool) -> Response {
 
 pub fn label_dim(ui: &mut Ui, text: impl Into<String>) -> Response {
     let t = Tokens::get(ui.ctx());
-    ui.label(egui::RichText::new(text.into()).color(t.text_dim).size(12.0))
+    let text = text.into();
+    ui.label(egui::RichText::new(crate::i18n::tr(&text)).color(t.text_dim).size(12.0))
 }

@@ -142,6 +142,7 @@ pub enum Action {
     CommandPalette,
     ToggleSelectionEdges,
     ToggleTheme,
+    SetLanguage(crate::i18n::Lang),
     // Help
     About,
     Shortcuts,
