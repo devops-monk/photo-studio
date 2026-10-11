@@ -24,7 +24,7 @@ fn tools() -> Value {
     json!([
         {
             "name": "open",
-            "description": "Open an image or project (PNG, JPEG, WebP, TIFF, PSD, PSB, ORA, SVG, .pstudio, …) and return a document id.",
+            "description": "Open an image or project (PNG, JPEG, WebP, HEIC, AVIF, TIFF, PSD, PSB, ORA, SVG, .pstudio, …) and return a document id.",
             "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}
         },
         {

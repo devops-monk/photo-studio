@@ -12,6 +12,87 @@ use crate::io::{IoError, Result, png_bytes};
 use crate::layer::{Layer, LayerId, LayerKind};
 
 /// Render an SVG at its natural size, scaled down to fit `max_side` if needed.
+/// Formats decoded by the operating system's own codecs (HEIF from phones, AVIF).
+pub const SYSTEM_DECODED: &[&str] = &["heic", "heif", "avif"];
+
+/// Decode an image through the platform's codecs: ImageIO via `sips` on macOS, WIC via
+/// PowerShell on Windows, and libheif / ImageMagick / ffmpeg on Linux when installed.
+pub fn decode_with_system(path: &std::path::Path) -> Result<Image> {
+    use std::process::{Command, Stdio};
+    let out = std::env::temp_dir().join(format!(
+        "photo-studio-decode-{}-{}.png",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos())
+    ));
+    let src = path.to_string_lossy().into_owned();
+    let dst = out.to_string_lossy().into_owned();
+    let mut tries: Vec<Command> = Vec::new();
+    if cfg!(target_os = "macos") {
+        let mut c = Command::new("sips");
+        c.args(["-s", "format", "png", &src, "--out", &dst]);
+        tries.push(c);
+    }
+    if cfg!(target_os = "windows") {
+        // WIC decodes HEIF and AVIF when the Store codec extensions are present.
+        let script = format!(
+            "Add-Type -AssemblyName PresentationCore; \
+             $d = [System.Windows.Media.Imaging.BitmapDecoder]::Create([Uri]'{}', 'PreservePixelFormat', 'OnLoad'); \
+             $e = New-Object System.Windows.Media.Imaging.PngBitmapEncoder; \
+             $e.Frames.Add($d.Frames[0]); $s = [IO.File]::Create('{}'); $e.Save($s); $s.Close()",
+            url_for(path).replace('\'', "''"),
+            dst.replace('\'', "''")
+        );
+        let mut c = Command::new("powershell");
+        c.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
+        tries.push(c);
+    }
+    for (prog, args) in [
+        ("heif-convert", vec![src.clone(), dst.clone()]),
+        ("magick", vec![src.clone(), dst.clone()]),
+        ("convert", vec![src.clone(), dst.clone()]),
+        (
+            "ffmpeg",
+            vec![
+                "-y".into(),
+                "-loglevel".into(),
+                "error".into(),
+                "-i".into(),
+                src.clone(),
+                "-frames:v".into(),
+                "1".into(),
+                dst.clone(),
+            ],
+        ),
+    ] {
+        if cfg!(target_os = "windows") && prog == "convert" {
+            continue; // convert.exe is a disk tool on Windows.
+        }
+        let mut c = Command::new(prog);
+        c.args(&args);
+        tries.push(c);
+    }
+    for mut c in tries {
+        let ok = c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
+        if ok && out.exists() {
+            let img = crate::io::read_image(&out);
+            let _ = std::fs::remove_file(&out);
+            return img;
+        }
+    }
+    let _ = std::fs::remove_file(&out);
+    let ext = path.extension().map(|e| e.to_string_lossy().to_uppercase()).unwrap_or_default();
+    Err(IoError::Unsupported(format!(
+        "{ext} needs a system decoder: on Windows install the HEIF/AV1 Image Extensions; on Linux install libheif (heif-convert), ImageMagick or ffmpeg"
+    )))
+}
+
+fn url_for(path: &std::path::Path) -> String {
+    let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let s = abs.to_string_lossy().replace('\\', "/");
+    let s = s.trim_start_matches("//?/");
+    format!("file:///{}", s.trim_start_matches('/'))
+}
+
 pub fn rasterize_svg(bytes: &[u8], max_side: u32) -> Result<Image> {
     use resvg::{tiny_skia as ts, usvg};
     let mut opt = usvg::Options::default();

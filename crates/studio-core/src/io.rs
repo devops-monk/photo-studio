@@ -35,7 +35,7 @@ pub type Result<T> = std::result::Result<T, IoError>;
 /// File extensions the app can open.
 pub const OPEN_EXTENSIONS: &[&str] = &[
     "pstudio", "psd", "psb", "ora", "svg", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "tga", "ico",
-    "qoi", "ppm", "pgm", "pnm", "exr", "hdr",
+    "qoi", "ppm", "pgm", "pnm", "exr", "hdr", "heic", "heif", "avif",
 ];
 
 /// Flat formats the app can export to.
@@ -89,6 +89,15 @@ pub fn open(path: &Path) -> Result<Document> {
         "pstudio" => load_project(path),
         "psd" | "psb" => read_psd(&std::fs::read(path)?),
         "ora" => crate::formats::read_ora(&std::fs::read(path)?),
+        e if crate::formats::SYSTEM_DECODED.contains(&e) => {
+            // The image crate may handle it (AVIF with native support); otherwise the OS does.
+            let img = read_image(path).or_else(|_| crate::formats::decode_with_system(path))?;
+            let mut doc = Document::from_image(img);
+            if let Some(stem) = path.file_stem() {
+                doc.layers[0].name = stem.to_string_lossy().into_owned();
+            }
+            Ok(doc)
+        }
         "tif" | "tiff" => {
             let bytes = std::fs::read(path)?;
             match read_layered_tiff(&bytes) {
@@ -656,6 +665,30 @@ mod tests {
         // PSD stores opacity in 8 bits, so allow one level of rounding.
         let (a, b) = (back.composite(), d.composite());
         assert!(a.pixels().iter().zip(b.pixels()).all(|(x, y)| x.abs_diff(*y) <= 1));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn opens_heic_through_the_system() {
+        let dir = std::env::temp_dir().join(format!("ps-heic-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("in.png");
+        let mut img = Image::filled(32, 24, Rgba::rgb(200, 40, 40));
+        img.put(1, 1, Rgba::rgb(0, 0, 255));
+        std::fs::write(&png, encode(&img, "png", &ExportOptions::default()).unwrap()).unwrap();
+        let heic = dir.join("photo.heic");
+        let ok = std::process::Command::new("sips")
+            .args(["-s", "format", "heic", png.to_str().unwrap(), "--out", heic.to_str().unwrap()])
+            .output()
+            .is_ok_and(|o| o.status.success());
+        if ok {
+            let doc = open(&heic).unwrap();
+            assert_eq!((doc.width, doc.height), (32, 24));
+            assert_eq!(doc.layers[0].name, "photo");
+            let c = doc.layers[0].pixels.get(16, 12);
+            assert!(c.r() > 170 && c.g() < 80, "{c:?}");
+        }
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
