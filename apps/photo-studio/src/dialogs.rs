@@ -91,7 +91,7 @@ const EXPORT_FORMATS: &[(&str, &str)] = &[
     ("JPEG", "jpg"),
     ("WebP (lossless)", "webp"),
     ("AVIF", "avif"),
-    ("TIFF", "tiff"),
+    ("TIFF (layered)", "tiff"),
     ("BMP", "bmp"),
     ("GIF", "gif"),
     ("TGA", "tga"),

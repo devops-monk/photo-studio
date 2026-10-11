@@ -21,7 +21,7 @@ One self-contained binary, no runtime, works offline.</p>
 - **Brushes**: presets with angle, roundness, scatter, size and opacity jitter, stroke smoothing, color dynamics, canvas and paper textures, and dual brush
 - **Tools for notes and output**: Note, Count and Slice (with Export Slices)
 - **Workflow**: rulers, guides, grid and snapping; a ⌘F command palette; Actions that record, replay and batch-process folders; unlimited visual history
-- **Files**: layered `.pstudio` projects; PSD and PSB (large documents) with groups and masks; OpenRaster with groups; SVG, OpenEXR and HDR; and PNG, JPEG, WebP, TIFF, BMP, GIF, TGA, ICO, QOI and PNM; AVIF export
+- **Files**: layered `.pstudio` projects; PSD and PSB (large documents) with groups and masks; layered TIFF; OpenRaster with groups; SVG, OpenEXR and HDR; and PNG, JPEG, WebP, TIFF, BMP, GIF, TGA, ICO, QOI and PNM; AVIF export
 - Light and dark themes, and keyboard shortcuts familiar from other editors
 
 ## Install

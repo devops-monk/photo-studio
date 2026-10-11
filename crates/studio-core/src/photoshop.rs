@@ -608,19 +608,10 @@ fn rle_plane(plane: &[u8], w: usize, h: usize, big: bool) -> Vec<u8> {
     out
 }
 
-/// Write a layered, RLE-compressed PSD (`big = false`) or PSB (`big = true`). Text, shape and
-/// fill layers are written as pixels; adjustment layers show up only in the merged image.
-pub fn write(doc: &Document, big: bool) -> Result<Vec<u8>> {
+/// The layer-info block (count, records, channel data), padded to 4 bytes. Shared by PSD/PSB and
+/// the layers Photoshop embeds in TIFF files.
+fn layer_info(doc: &Document, big: bool) -> Vec<u8> {
     let (w, h) = (doc.width, doc.height);
-    let max = if big { PSB_MAX_SIDE } else { PSD_MAX_SIDE };
-    if w > max || h > max {
-        return Err(bad(if big {
-            "PSB is limited to 300,000 pixels per side".to_string()
-        } else {
-            "PSD is limited to 30,000 pixels per side; save as PSB instead".to_string()
-        }));
-    }
-    let mut b: Vec<u8> = Vec::new();
     let be16 = |v: &mut Vec<u8>, x: u16| v.extend_from_slice(&x.to_be_bytes());
     let be32 = |v: &mut Vec<u8>, x: u32| v.extend_from_slice(&x.to_be_bytes());
     let len = |v: &mut Vec<u8>, x: usize| {
@@ -630,18 +621,6 @@ pub fn write(doc: &Document, big: bool) -> Result<Vec<u8>> {
             v.extend_from_slice(&(x as u32).to_be_bytes());
         }
     };
-
-    b.extend_from_slice(b"8BPS");
-    be16(&mut b, if big { 2 } else { 1 });
-    b.extend_from_slice(&[0; 6]);
-    be16(&mut b, 4); // channels in the merged image: RGBA
-    be32(&mut b, h);
-    be32(&mut b, w);
-    be16(&mut b, 8);
-    be16(&mut b, 3); // RGB
-    be32(&mut b, 0); // colour mode data
-    be32(&mut b, 0); // image resources
-
     // Groups become section records: a divider below the children and the folder above them.
     enum Rec<'a> {
         Pixels(&'a Layer),
@@ -774,6 +753,44 @@ pub fn write(doc: &Document, big: bool) -> Result<Vec<u8>> {
     while layer_info.len() % 4 != 0 {
         layer_info.push(0);
     }
+    layer_info
+}
+
+/// Write a layered, RLE-compressed PSD (`big = false`) or PSB (`big = true`). Text, shape and
+/// fill layers are written as pixels; adjustment layers show up only in the merged image.
+pub fn write(doc: &Document, big: bool) -> Result<Vec<u8>> {
+    let (w, h) = (doc.width, doc.height);
+    let max = if big { PSB_MAX_SIDE } else { PSD_MAX_SIDE };
+    if w > max || h > max {
+        return Err(bad(if big {
+            "PSB is limited to 300,000 pixels per side".to_string()
+        } else {
+            "PSD is limited to 30,000 pixels per side; save as PSB instead".to_string()
+        }));
+    }
+    let mut b: Vec<u8> = Vec::new();
+    let be16 = |v: &mut Vec<u8>, x: u16| v.extend_from_slice(&x.to_be_bytes());
+    let be32 = |v: &mut Vec<u8>, x: u32| v.extend_from_slice(&x.to_be_bytes());
+    let len = |v: &mut Vec<u8>, x: usize| {
+        if big {
+            v.extend_from_slice(&(x as u64).to_be_bytes());
+        } else {
+            v.extend_from_slice(&(x as u32).to_be_bytes());
+        }
+    };
+
+    b.extend_from_slice(b"8BPS");
+    be16(&mut b, if big { 2 } else { 1 });
+    b.extend_from_slice(&[0; 6]);
+    be16(&mut b, 4); // channels in the merged image: RGBA
+    be32(&mut b, h);
+    be32(&mut b, w);
+    be16(&mut b, 8);
+    be16(&mut b, 3); // RGB
+    be32(&mut b, 0); // colour mode data
+    be32(&mut b, 0); // image resources
+
+    let layer_info = layer_info(doc, big);
     let lw = if big { 8 } else { 4 };
     len(&mut b, layer_info.len() + lw + 4);
     len(&mut b, layer_info.len());
@@ -802,6 +819,49 @@ pub fn write(doc: &Document, big: bool) -> Result<Vec<u8>> {
     b.extend_from_slice(&counts);
     b.extend_from_slice(&rows);
     Ok(b)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Layers inside TIFF files.
+
+/// Photoshop's private TIFF tag (ImageSourceData) that carries layers.
+pub const TIFF_LAYERS_TAG: u16 = 37724;
+const TIFF_BLOCK: &[u8] = b"Adobe Photoshop Document Data Block\0";
+
+/// The ImageSourceData payload for `doc`'s layers.
+pub fn tiff_layer_block(doc: &Document) -> Vec<u8> {
+    let li = layer_info(doc, false);
+    let mut v = TIFF_BLOCK.to_vec();
+    v.extend_from_slice(b"8BIMLayr");
+    v.extend_from_slice(&(li.len() as u32).to_be_bytes());
+    v.extend_from_slice(&li);
+    v
+}
+
+/// Layers from an ImageSourceData payload, if it has any.
+pub fn read_tiff_layers(data: &[u8], w: u32, h: u32) -> Result<Option<Document>> {
+    let Some(rest) = data.strip_prefix(TIFF_BLOCK) else { return Ok(None) };
+    let mut c = Cur { b: rest, p: 0 };
+    for (key, block) in tagged_blocks(&mut c, false)? {
+        let depth = match &key {
+            b"Layr" => 8,
+            b"Lr16" => 16,
+            b"Lr32" => 32,
+            _ => continue,
+        };
+        let hd = Header { big: false, channels: 4, w, h, depth, mode: 3 };
+        let mut li = Cur { b: block, p: 0 };
+        let recs = read_records(&mut li, false)?;
+        let mut doc = Document::new(w, h, None);
+        doc.layers.clear();
+        build_layers(&mut doc, &recs, &mut li, &hd, false)?;
+        if doc.layers.is_empty() {
+            return Ok(None);
+        }
+        doc.active = doc.layers.len() - 1;
+        return Ok(Some(doc));
+    }
+    Ok(None)
 }
 
 #[cfg(test)]

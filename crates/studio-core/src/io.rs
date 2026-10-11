@@ -83,6 +83,13 @@ pub fn open(path: &Path) -> Result<Document> {
         "pstudio" => load_project(path),
         "psd" | "psb" => read_psd(&std::fs::read(path)?),
         "ora" => crate::formats::read_ora(&std::fs::read(path)?),
+        "tif" | "tiff" => {
+            let bytes = std::fs::read(path)?;
+            match read_layered_tiff(&bytes) {
+                Some(doc) => Ok(doc),
+                None => Ok(Document::from_image(read_image(path)?)),
+            }
+        }
         "svg" => {
             let img = crate::formats::rasterize_svg(&std::fs::read(path)?, 8192)?;
             let mut doc = Document::from_image(img);
@@ -164,8 +171,63 @@ pub fn export(doc: &Document, path: &Path, opts: &ExportOptions) -> Result<()> {
     if e == "ora" {
         return write_atomic(path, &crate::formats::ora_bytes(doc)?);
     }
+    if e == "tif" || e == "tiff" {
+        return write_atomic(path, &layered_tiff_bytes(doc)?);
+    }
     let bytes = encode(&doc.composite(), &e, opts)?;
     write_atomic(path, &bytes)
+}
+
+/// TIFF's UNDEFINED byte type, which Photoshop's layer tag uses.
+struct Undefined<'a>(&'a [u8]);
+
+impl tiff::encoder::TiffValue for Undefined<'_> {
+    const BYTE_LEN: u8 = 1;
+    const FIELD_TYPE: tiff::tags::Type = tiff::tags::Type::UNDEFINED;
+
+    fn count(&self) -> usize {
+        self.0.len()
+    }
+
+    fn data(&self) -> std::borrow::Cow<'_, [u8]> {
+        std::borrow::Cow::Borrowed(self.0)
+    }
+}
+
+fn tiff_err(e: tiff::TiffError) -> IoError {
+    IoError::Image(image::ImageError::Encoding(image::error::EncodingError::new(
+        image::error::ImageFormatHint::Exact(ImageFormat::Tiff),
+        e,
+    )))
+}
+
+/// An LZW-compressed RGBA TIFF of the composite, with the layers in Photoshop's private tag so
+/// Photoshop (and Photo Studio) reopen it layered while every other reader sees the flat image.
+pub fn layered_tiff_bytes(doc: &Document) -> Result<Vec<u8>> {
+    use tiff::encoder::{Compression, TiffEncoder, colortype::RGBA8};
+    let comp = doc.composite();
+    let block = crate::photoshop::tiff_layer_block(doc);
+    let mut out = Cursor::new(Vec::new());
+    {
+        let mut enc = TiffEncoder::new(&mut out).map_err(tiff_err)?.with_compression(Compression::Lzw);
+        let mut img = enc.new_image::<RGBA8>(doc.width, doc.height).map_err(tiff_err)?;
+        if doc.layers.len() > 1 || doc.layers.iter().any(|l| l.mask.is_some() || l.is_group()) {
+            img.encoder()
+                .write_tag(tiff::tags::Tag::Unknown(crate::photoshop::TIFF_LAYERS_TAG), Undefined(&block))
+                .map_err(tiff_err)?;
+        }
+        img.write_data(comp.pixels()).map_err(tiff_err)?;
+    }
+    Ok(out.into_inner())
+}
+
+/// Layers stored by Photoshop (or us) in a TIFF, if any.
+pub fn read_layered_tiff(bytes: &[u8]) -> Option<Document> {
+    let mut dec = tiff::decoder::Decoder::new(Cursor::new(bytes)).ok()?.with_limits(tiff::decoder::Limits::unlimited());
+    let (w, h) = dec.dimensions().ok()?;
+    let mut buf = tiff::tags::ValueBuffer::empty(tiff::tags::Type::UNDEFINED);
+    dec.image_ifd().find_tag_buf(tiff::tags::Tag::Unknown(crate::photoshop::TIFF_LAYERS_TAG), &mut buf).ok()??;
+    crate::photoshop::read_tiff_layers(buf.as_bytes(), w, h).ok().flatten()
 }
 
 /// Write via a temporary file and rename, so a failed save never truncates the original.
@@ -573,6 +635,27 @@ mod tests {
         // PSD stores opacity in 8 bits, so allow one level of rounding.
         let (a, b) = (back.composite(), d.composite());
         assert!(a.pixels().iter().zip(b.pixels()).all(|(x, y)| x.abs_diff(*y) <= 1));
+    }
+
+    #[test]
+    fn layered_tiff_round_trip() {
+        let mut d = Document::new(20, 10, Some(Rgba::rgb(20, 40, 60)));
+        d.add_empty_layer("Top layer");
+        d.layers[1].pixels.put(3, 4, Rgba::rgb(255, 0, 0));
+        d.layers[1].blend = BlendMode::Screen;
+        let bytes = layered_tiff_bytes(&d).unwrap();
+        // Any reader sees the composite.
+        let flat = image::load_from_memory_with_format(&bytes, ImageFormat::Tiff).unwrap().into_rgba8();
+        assert_eq!(flat.get_pixel(3, 4).0, d.composite().get(3, 4).0);
+        // We get the layers back.
+        let back = read_layered_tiff(&bytes).expect("layers");
+        assert_eq!(back.layers.len(), 2);
+        assert_eq!(back.layers[1].name, "Top layer");
+        assert_eq!(back.layers[1].blend, BlendMode::Screen);
+        assert_eq!(back.layers[1].pixels.get(3, 4), Rgba::rgb(255, 0, 0));
+        // A single plain layer writes an ordinary TIFF.
+        let plain = layered_tiff_bytes(&Document::new(4, 4, Some(Rgba::WHITE))).unwrap();
+        assert!(read_layered_tiff(&plain).is_none());
     }
 
     #[test]

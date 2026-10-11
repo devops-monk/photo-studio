@@ -297,6 +297,7 @@ impl App {
                     .add_filter("Photo Studio project", &[io::PROJECT_EXTENSION])
                     .add_filter("Photoshop document", &["psd"])
                     .add_filter("Photoshop large document", &["psb"])
+                    .add_filter("Layered TIFF", &["tif", "tiff"])
                     .add_filter("OpenRaster", &["ora"]);
                 if let Some(dir) =
                     tab.source.as_ref().and_then(|s| s.parent().map(Path::to_path_buf)).or_else(|| self.dialog_dir())
@@ -310,12 +311,12 @@ impl App {
             }
         };
         let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-        let is_psd = matches!(ext.as_str(), "psd" | "psb" | "ora");
+        let is_psd = matches!(ext.as_str(), "psd" | "psb" | "ora" | "tif" | "tiff");
         let tab = &self.docs[index];
         let result = match ext.as_str() {
             "psd" => io::save_psd(&tab.doc, &path),
             "psb" => io::save_psb(&tab.doc, &path),
-            "ora" => io::export(&tab.doc, &path, &io::ExportOptions::default()),
+            "ora" | "tif" | "tiff" => io::export(&tab.doc, &path, &io::ExportOptions::default()),
             _ => io::save_project(&tab.doc, &path),
         };
         match result {
