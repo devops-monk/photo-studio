@@ -4,7 +4,7 @@ members = ["crates/studio-core", "apps/photo-studio", "apps/photo-studio-cli"]
 default-members = ["crates/studio-core", "apps/photo-studio", "apps/photo-studio-cli"]
 
 [workspace.package]
-version = "0.4.1"
+version = "1.0.0"
 edition = "2024"
 license = "MIT"
 authors = ["Abhay Pratap Singh <abhaypratap3537@gmail.com>"]

@@ -70,7 +70,7 @@ If the GPU driver is old, set `PHOTO_STUDIO_RENDERER=glow`.
 
 ## Releasing
 
-Push a tag such as `git tag v0.1.0 && git push origin v0.1.0`. GitHub Actions builds every platform and publishes the release.
+Push a tag such as `git tag v1.0.0 && git push origin v1.0.0`. GitHub Actions builds every platform and publishes the release.
 
 ## License
 
