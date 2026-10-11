@@ -90,6 +90,7 @@ const EXPORT_FORMATS: &[(&str, &str)] = &[
     ("PNG", "png"),
     ("JPEG", "jpg"),
     ("WebP (lossless)", "webp"),
+    ("AVIF", "avif"),
     ("TIFF", "tiff"),
     ("BMP", "bmp"),
     ("GIF", "gif"),
@@ -338,7 +339,7 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
                     }
                 });
                 ui.end_row();
-                if EXPORT_FORMATS[*format].1 == "jpg" {
+                if matches!(EXPORT_FORMATS[*format].1, "jpg" | "avif") {
                     label_dim(ui, "Quality");
                     ui.add(egui::Slider::new(quality, 1..=100));
                     ui.end_row();

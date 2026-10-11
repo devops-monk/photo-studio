@@ -39,7 +39,8 @@ pub const OPEN_EXTENSIONS: &[&str] = &[
 ];
 
 /// Flat formats the app can export to.
-pub const EXPORT_EXTENSIONS: &[&str] = &["png", "jpg", "webp", "bmp", "tiff", "gif", "tga", "ico", "qoi", "ppm", "exr"];
+pub const EXPORT_EXTENSIONS: &[&str] =
+    &["png", "jpg", "webp", "avif", "bmp", "tiff", "gif", "tga", "ico", "qoi", "ppm", "exr"];
 
 pub const PROJECT_EXTENSION: &str = "pstudio";
 
@@ -117,6 +118,12 @@ pub fn encode(img: &Image, extension: &str, opts: &ExportOptions) -> Result<Vec<
             let rgb = DynamicImage::ImageRgba8(over_matte(img, opts.matte).to_rgba_image()).into_rgb8();
             let fmt = if e == "bmp" { ImageFormat::Bmp } else { ImageFormat::Pnm };
             rgb.write_to(&mut out, fmt)?;
+        }
+        "avif" => {
+            // Speed 6 balances encode time and size; quality follows the JPEG setting.
+            let enc =
+                image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut out, 6, opts.jpeg_quality.clamp(1, 100));
+            img.to_rgba_image().write_with_encoder(enc)?;
         }
         "exr" => {
             let f = DynamicImage::ImageRgba8(img.to_rgba_image()).into_rgba32f();
@@ -742,6 +749,11 @@ mod tests {
         let img = Image::filled(8, 8, Rgba::rgba(10, 20, 30, 200));
         for e in EXPORT_EXTENSIONS {
             let bytes = encode(&img, e, &ExportOptions::default()).unwrap_or_else(|err| panic!("{e}: {err}"));
+            if *e == "avif" {
+                // Encode-only (decoding needs a native AV1 decoder): check the container brand.
+                assert_eq!(&bytes[4..12], b"ftypavif");
+                continue;
+            }
             let fmt = ImageFormat::from_extension(e).unwrap();
             let back = image::load_from_memory_with_format(&bytes, fmt).unwrap_or_else(|err| panic!("{e}: {err}"));
             assert_eq!(back.width(), 8, "{e}");

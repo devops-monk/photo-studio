@@ -18,10 +18,10 @@ One self-contained binary, no runtime, works offline.</p>
 - **Content-aware**: Content-Aware Fill (⇧⌫), the Remove brush, Patch and Content-Aware Move
 - **Selections**: Select Subject, Color Range, Quick Mask (Q), saved selections, feather, expand, contract, border and smooth
 - **Paths**: Bézier paths become selections, fills, strokes or shape layers
-- **Brushes**: presets with angle, roundness, scatter, size and opacity jitter, and stroke smoothing
+- **Brushes**: presets with angle, roundness, scatter, size and opacity jitter, stroke smoothing, color dynamics, canvas and paper textures, and dual brush
 - **Tools for notes and output**: Note, Count and Slice (with Export Slices)
 - **Workflow**: rulers, guides, grid and snapping; a ⌘F command palette; Actions that record, replay and batch-process folders; unlimited visual history
-- **Files**: layered `.pstudio` projects; PSD and OpenRaster with groups; SVG, OpenEXR and HDR; and PNG, JPEG, WebP, TIFF, BMP, GIF, TGA, ICO, QOI and PNM
+- **Files**: layered `.pstudio` projects; PSD and OpenRaster with groups; SVG, OpenEXR and HDR; and PNG, JPEG, WebP, TIFF, BMP, GIF, TGA, ICO, QOI and PNM; AVIF export
 - Light and dark themes, and keyboard shortcuts familiar from other editors
 
 ## Install
