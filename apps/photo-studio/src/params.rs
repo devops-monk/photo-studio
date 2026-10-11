@@ -156,7 +156,7 @@ fn curves_editor(ui: &mut Ui, curve: &mut Curve, hist: Option<&Histogram>, st: &
             crate::widgets::label_dim(ui, "Click to add a point · drag off to remove");
         }
     });
-    if ui.button("Reset curve").clicked() {
+    if ui.button(crate::i18n::tr("Reset curve")).clicked() {
         *curve = Curve::default();
         changed = true;
     }
@@ -477,7 +477,7 @@ pub fn filter_ui(ui: &mut Ui, f: &mut Filter) -> bool {
                 c |= slider_row(ui, "X", &mut px, 0.0..=100.0, "%", 0);
                 c |= slider_row(ui, "Y", &mut py, 0.0..=100.0, "%", 0);
                 (*x, *y) = (px / 100.0, py / 100.0);
-                if i >= 2 && ui.small_button("Remove point").clicked() {
+                if i >= 2 && ui.small_button(crate::i18n::tr("Remove point")).clicked() {
                     remove = Some(i);
                 }
             }
@@ -485,7 +485,7 @@ pub fn filter_ui(ui: &mut Ui, f: &mut Filter) -> bool {
                 points.remove(i);
                 c = true;
             }
-            if points.len() < 8 && ui.button("Add point").clicked() {
+            if points.len() < 8 && ui.button(crate::i18n::tr("Add point")).clicked() {
                 let last = *points.last().unwrap_or(&(0.5, 0.5));
                 points.push(((last.0 + 0.1).min(1.0), last.1));
                 c = true;
@@ -500,7 +500,7 @@ pub fn filter_ui(ui: &mut Ui, f: &mut Filter) -> bool {
                 c |= slider_row(ui, "Y", &mut py, 0.0..=100.0, "%", 0);
                 c |= slider_row(ui, "Blur", r, 0.0..=80.0, " px", 0);
                 (*x, *y) = (px / 100.0, py / 100.0);
-                if ui.small_button("Remove pin").clicked() {
+                if ui.small_button(crate::i18n::tr("Remove pin")).clicked() {
                     remove = Some(i);
                 }
             }
@@ -508,7 +508,7 @@ pub fn filter_ui(ui: &mut Ui, f: &mut Filter) -> bool {
                 pins.remove(i);
                 c = true;
             }
-            if pins.len() < 6 && ui.button("Add pin").clicked() {
+            if pins.len() < 6 && ui.button(crate::i18n::tr("Add pin")).clicked() {
                 pins.push((0.5, 0.5, 10.0));
                 c = true;
             }
@@ -534,7 +534,7 @@ pub fn filter_ui(ui: &mut Ui, f: &mut Filter) -> bool {
             c |= slider_row(ui, "Amount", amount, 0.1..=100.0, "%", 1);
             c |= segmented(ui, dist, &[(NoiseDist::Uniform, "Uniform"), (NoiseDist::Gaussian, "Gaussian")]);
             c |= toggle_row(ui, "Monochromatic", monochrome);
-            if ui.small_button("New seed").clicked() {
+            if ui.small_button(crate::i18n::tr("New seed")).clicked() {
                 *seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
                 c = true;
             }
@@ -571,7 +571,7 @@ pub fn filter_ui(ui: &mut Ui, f: &mut Filter) -> bool {
         Filter::Mosaic { cell } => c |= slider_row(ui, "Cell size", cell, 2.0..=200.0, " px", 0),
         Filter::Crystallize { cell, seed } => {
             c |= slider_row(ui, "Cell size", cell, 3.0..=300.0, " px", 0);
-            if ui.small_button("New pattern").clicked() {
+            if ui.small_button(crate::i18n::tr("New pattern")).clicked() {
                 *seed = seed.wrapping_add(1);
                 c = true;
             }
@@ -595,7 +595,7 @@ pub fn filter_ui(ui: &mut Ui, f: &mut Filter) -> bool {
         Filter::Clouds { seed, scale } => {
             c |= slider_row(ui, "Scale", scale, 8.0..=1000.0, " px", 0);
             crate::widgets::label_dim(ui, "Uses the foreground and background colors.");
-            if ui.small_button("New clouds").clicked() {
+            if ui.small_button(crate::i18n::tr("New clouds")).clicked() {
                 *seed = seed.wrapping_add(7);
                 c = true;
             }

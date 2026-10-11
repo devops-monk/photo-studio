@@ -253,12 +253,16 @@ fn color_panel(app: &mut App, ui: &mut Ui) {
         ui.vertical(|ui| {
             if ui
                 .small_button(format!("{} {}", ph::ARROWS_LEFT_RIGHT, crate::i18n::tr("Swap")))
-                .on_hover_text("Swap colors (X)")
+                .on_hover_text(crate::i18n::tr("Swap colors (X)"))
                 .clicked()
             {
                 std::mem::swap(&mut app.fg, &mut app.bg);
             }
-            if ui.small_button(crate::i18n::tr("Default")).on_hover_text("Black and white (D)").clicked() {
+            if ui
+                .small_button(crate::i18n::tr("Default"))
+                .on_hover_text(crate::i18n::tr("Black and white (D)"))
+                .clicked()
+            {
                 app.fg = Rgba::BLACK;
                 app.bg = Rgba::WHITE;
             }
@@ -691,7 +695,8 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
             ui.painter().layout_no_wrap(crate::i18n::tr(s).into_owned(), font, egui::Color32::WHITE).size().x
         };
         let fixed = label_w(ui, "Opacity") + label_w(ui, "layer|Fill") + 2.0 * 52.0 + 6.0 * ui.spacing().item_spacing.x;
-        let combo_w = (ui.available_width() - fixed - 24.0).clamp(64.0, 120.0);
+        let one_line = ui.available_width() >= fixed + 64.0 + 24.0;
+        let combo_w = if one_line { (ui.available_width() - fixed - 24.0).clamp(64.0, 120.0) } else { 120.0 };
         ui.horizontal(|ui| {
             ui.scope(|ui| {
                 egui::ComboBox::from_id_salt("blend-mode")
@@ -717,13 +722,13 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 layer.opacity = pct / 100.0;
                 changed = true;
             }
-            let mut fill = layer.fill_opacity * 100.0;
-            label_dim(ui, "layer|Fill").on_hover_text("Content opacity; layer styles stay at full strength");
-            if ui.add(egui::DragValue::new(&mut fill).range(0.0..=100.0).suffix("%").speed(1.0)).changed() {
-                layer.fill_opacity = fill / 100.0;
-                changed = true;
+            if one_line {
+                changed |= fill_control(ui, layer);
             }
         });
+        if !one_line {
+            ui.horizontal(|ui| changed |= fill_control(ui, layer));
+        }
         ui.horizontal(|ui| {
             label_dim(ui, "Lock");
             let lock_icon = if layer.locked { ph::LOCK } else { ph::LOCK_OPEN };
@@ -1047,7 +1052,7 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
             resp.context_menu(|ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
-                    if ui.small_button("None").clicked() {
+                    if ui.small_button(crate::i18n::tr("None")).clicked() {
                         set_label = Some((i, None));
                         ui.close();
                     }
@@ -1059,39 +1064,39 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     }
                 });
                 ui.separator();
-                if ui.button("Duplicate Layer").clicked() {
+                if ui.button(crate::i18n::tr("Duplicate Layer")).clicked() {
                     select = Some(i);
                     actions.push(Action::DuplicateLayer);
                 }
-                if ui.button("Delete Layer").clicked() {
+                if ui.button(crate::i18n::tr("Delete Layer")).clicked() {
                     select = Some(i);
                     actions.push(Action::DeleteLayer);
                 }
-                if ui.button("Rename…").clicked() {
+                if ui.button(crate::i18n::tr("Rename…")).clicked() {
                     ui.data_mut(|d| d.insert_temp(renaming_id, name.clone()));
                 }
                 ui.separator();
-                if ui.button("Layer Style…").clicked() {
+                if ui.button(crate::i18n::tr("Layer Style…")).clicked() {
                     select = Some(i);
                     actions.push(Action::LayerStyle);
                 }
-                if ui.button("Add Layer Mask").clicked() {
+                if ui.button(crate::i18n::tr("Add Layer Mask")).clicked() {
                     select = Some(i);
                     actions.push(Action::MaskRevealAll);
                 }
-                if ui.button("Create Clipping Mask").clicked() {
+                if ui.button(crate::i18n::tr("Create Clipping Mask")).clicked() {
                     select = Some(i);
                     actions.push(Action::ToggleClipping);
                 }
-                if ui.button("Rasterize Layer").clicked() {
+                if ui.button(crate::i18n::tr("Rasterize Layer")).clicked() {
                     select = Some(i);
                     actions.push(Action::Rasterize);
                 }
-                if ui.button("Select Pixels").clicked() {
+                if ui.button(crate::i18n::tr("Select Pixels")).clicked() {
                     load_sel = Some(i);
                 }
                 ui.separator();
-                if ui.button("Merge Down").clicked() {
+                if ui.button(crate::i18n::tr("Merge Down")).clicked() {
                     select = Some(i);
                     actions.push(Action::MergeDown);
                 }
@@ -1174,13 +1179,13 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
         }
         let r = small_button(ui, ph::CIRCLE_HALF, "New fill or adjustment layer");
         egui::Popup::menu(&r).show(|ui| {
-            if ui.button("Solid Color…").clicked() {
+            if ui.button(crate::i18n::tr("Solid Color…")).clicked() {
                 actions.push(Action::NewFillSolid);
             }
-            if ui.button("Gradient…").clicked() {
+            if ui.button(crate::i18n::tr("Gradient…")).clicked() {
                 actions.push(Action::NewFillGradient);
             }
-            if ui.button("Pattern…").clicked() {
+            if ui.button(crate::i18n::tr("Pattern…")).clicked() {
                 actions.push(Action::NewFillPattern);
             }
             ui.separator();
@@ -1200,4 +1205,15 @@ fn layers(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
             actions.push(Action::DeleteLayer);
         }
     });
+}
+
+/// The layer's Fill (content opacity) control.
+fn fill_control(ui: &mut Ui, layer: &mut studio_core::Layer) -> bool {
+    let mut fill = layer.fill_opacity * 100.0;
+    label_dim(ui, "layer|Fill").on_hover_text(crate::i18n::tr("Content opacity; layer styles stay at full strength"));
+    if ui.add(egui::DragValue::new(&mut fill).range(0.0..=100.0).suffix("%").speed(1.0)).changed() {
+        layer.fill_opacity = fill / 100.0;
+        return true;
+    }
+    false
 }

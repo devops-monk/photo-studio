@@ -213,7 +213,7 @@ fn modal<R>(ctx: &Context, id: &str, title: &str, width: f32, add: impl FnOnce(&
     egui::Modal::new(egui::Id::new(id))
         .show(ctx, |ui| {
             ui.set_width(width);
-            ui.label(egui::RichText::new(title).font(crate::theme::medium(16.0)));
+            ui.label(egui::RichText::new(crate::i18n::tr(title)).font(crate::theme::medium(16.0)));
             ui.add_space(8.0);
             add(ui)
         })
@@ -222,7 +222,7 @@ fn modal<R>(ctx: &Context, id: &str, title: &str, width: f32, add: impl FnOnce(&
 
 fn panel_window<R>(ctx: &Context, title: &str, add: impl FnOnce(&mut Ui) -> R) -> Option<R> {
     let screen = ctx.content_rect();
-    egui::Window::new(title)
+    egui::Window::new(crate::i18n::tr(title))
         .id(egui::Id::new(("dlg", title)))
         .collapsible(false)
         .resizable(false)
@@ -957,10 +957,10 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
                     d.history.set_limit(app.prefs.history_limit);
                 }
             }
-            if ui.button("Clear recent files").clicked() {
+            if ui.button(crate::i18n::tr("Clear recent files")).clicked() {
                 app.prefs.recent.clear();
             }
-            if ui.button("Reset tool options").clicked() {
+            if ui.button(crate::i18n::tr("Reset tool options")).clicked() {
                 app.opts = Default::default();
             }
             let (ok, cancel) = buttons(ui, "Done");
@@ -972,7 +972,7 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
                 ui.label(egui::RichText::new("Photo Studio").font(crate::theme::bold(22.0)));
                 label_dim(ui, format!("Version {}", env!("CARGO_PKG_VERSION")));
                 ui.add_space(6.0);
-                ui.label("A fast, layer-based photo editor for macOS, Windows and Linux.");
+                ui.label(crate::i18n::tr("A fast, layer-based photo editor for macOS, Windows and Linux."));
                 ui.add_space(4.0);
                 label_dim(ui, "© 2026 Abhay Pratap Singh · MIT License");
                 label_dim(ui, "Inter, Noto Serif and JetBrains Mono fonts under the SIL Open Font License.");

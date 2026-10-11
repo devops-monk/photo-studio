@@ -355,7 +355,7 @@ fn tip_preview(ui: &mut Ui, tip: &studio_core::paint::BrushTip) {
 fn tip_controls(ui: &mut Ui, tip: &mut studio_core::paint::BrushTip, show_hardness: bool) {
     let r = ui
         .button(format!("{} {}", ph::PAINT_BRUSH_BROAD, crate::i18n::tr("Brush")))
-        .on_hover_text("Presets and brush settings");
+        .on_hover_text(crate::i18n::tr("Presets and brush settings"));
     egui::Popup::from_toggle_button_response(&r).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(
         |ui| {
             egui::ScrollArea::vertical().max_height(560.0).show(ui, |ui| tip_settings(ui, tip));
@@ -429,7 +429,7 @@ fn tip_settings(ui: &mut Ui, tip: &mut studio_core::paint::BrushTip) {
     }
     ui.label(egui::RichText::new("Dual brush").font(crate::theme::medium(12.0)));
     let mut on = tip.dual_size > 0.0;
-    if ui.checkbox(&mut on, "Enabled").changed() {
+    if ui.checkbox(&mut on, crate::i18n::tr("Enabled")).changed() {
         tip.dual_size = if on { (tip.size / 6.0).max(2.0) } else { 0.0 };
     }
     if tip.dual_size > 0.0 {
@@ -518,7 +518,7 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 tip_controls(ui, &mut o.tip, true);
                 if app.tool != Tool::SpotHeal {
                     pct(ui, "Opacity", &mut o.opacity);
-                    ui.checkbox(&mut o.sample_merged, "Sample all layers");
+                    ui.checkbox(&mut o.sample_merged, crate::i18n::tr("Sample all layers"));
                     if app.cv.clone_source.is_none() {
                         label_dim(ui, "Alt-click to set the source");
                     }
@@ -557,14 +557,14 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 select_ops(ui, &mut o.select_op);
                 label_dim(ui, "Feather");
                 ui.add(egui::DragValue::new(&mut o.feather).range(0.0..=250.0).suffix(" px"));
-                if ui.button("Select Subject").clicked() {
+                if ui.button(crate::i18n::tr("Select Subject")).clicked() {
                     actions.push(Action::SelectSubject);
                 }
             }
             Tool::ObjectSelect => {
                 select_ops(ui, &mut o.select_op);
                 label_dim(ui, "Drag a box around an object");
-                if ui.button("Select Subject").clicked() {
+                if ui.button(crate::i18n::tr("Select Subject")).clicked() {
                     actions.push(Action::SelectSubject);
                 }
             }
@@ -572,7 +572,7 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 label_dim(ui, "Size");
                 ui.add(egui::DragValue::new(&mut o.tip.size).range(1.0..=500.0).suffix(" px"));
                 label_dim(ui, "Alt subtracts");
-                if ui.button("Select Subject").clicked() {
+                if ui.button(crate::i18n::tr("Select Subject")).clicked() {
                     actions.push(Action::SelectSubject);
                 }
             }
@@ -582,17 +582,17 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 }
                 label_dim(ui, "Tolerance");
                 ui.add(egui::DragValue::new(&mut o.tolerance).range(0..=255));
-                ui.checkbox(&mut o.anti_alias, "Anti-alias");
-                ui.checkbox(&mut o.contiguous, "Contiguous");
-                ui.checkbox(&mut o.sample_merged, "Sample all layers");
+                ui.checkbox(&mut o.anti_alias, crate::i18n::tr("Anti-alias"));
+                ui.checkbox(&mut o.contiguous, crate::i18n::tr("Contiguous"));
+                ui.checkbox(&mut o.sample_merged, crate::i18n::tr("Sample all layers"));
                 if app.tool == Tool::Bucket {
                     pct(ui, "Opacity", &mut o.opacity);
-                } else if ui.button("Select Subject").clicked() {
+                } else if ui.button(crate::i18n::tr("Select Subject")).clicked() {
                     actions.push(Action::SelectSubject);
                 }
             }
             Tool::Eyedropper => {
-                ui.checkbox(&mut o.sample_merged, "Sample all layers");
+                ui.checkbox(&mut o.sample_merged, crate::i18n::tr("Sample all layers"));
                 label_dim(ui, "Alt-click picks the background color");
             }
             Tool::Gradient => {
@@ -604,7 +604,7 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     }
                 });
                 segmented(ui, &mut o.gradient_shape, &GradientShape::ALL.map(|s| (s, s.label())));
-                ui.checkbox(&mut o.gradient_reverse, "Reverse");
+                ui.checkbox(&mut o.gradient_reverse, crate::i18n::tr("Reverse"));
                 label_dim(ui, "Mode");
                 blend_combo(ui, "grad-mode", &mut o.gradient_blend);
                 pct(ui, "Opacity", &mut o.gradient_opacity);
@@ -614,12 +614,12 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     if crate::widgets::primary_button(ui, &format!("{} Crop", ph::CHECK)).clicked() {
                         crate::canvas::commit_crop(app);
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(crate::i18n::tr("Cancel")).clicked() {
                         app.cv.crop = None;
                     }
                 } else {
                     label_dim(ui, "Drag on the image to set the crop");
-                    if ui.button("Crop to Selection").clicked() {
+                    if ui.button(crate::i18n::tr("Crop to Selection")).clicked() {
                         actions.push(Action::CropToSelection);
                     }
                 }
@@ -661,12 +661,12 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
             | Tool::SpeechBubble
             | Tool::Checkmark => {
                 if app.tool != Tool::Line {
-                    ui.checkbox(&mut o.fill_enabled, "Fill (foreground)");
-                    ui.checkbox(&mut o.stroke_enabled, "Stroke (background)");
+                    ui.checkbox(&mut o.fill_enabled, crate::i18n::tr("Fill (foreground)"));
+                    ui.checkbox(&mut o.stroke_enabled, crate::i18n::tr("Stroke (background)"));
                 }
                 label_dim(ui, "Width");
                 ui.add(egui::DragValue::new(&mut o.stroke_width).range(0.5..=200.0).suffix(" px"));
-                ui.checkbox(&mut o.dashed, "Dashed");
+                ui.checkbox(&mut o.dashed, crate::i18n::tr("Dashed"));
                 match app.tool {
                     Tool::RoundedRect => {
                         label_dim(ui, "Radius");
@@ -691,7 +691,7 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     if crate::widgets::primary_button(ui, &format!("{} Apply", ph::CHECK)).clicked() {
                         crate::canvas::commit_transform(app);
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(crate::i18n::tr("Cancel")).clicked() {
                         crate::canvas::cancel_transform(app);
                     }
                 } else {
@@ -738,16 +738,16 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                         crate::canvas::finish_pen(app, bp);
                     }
                 }
-                if ui.button("Make Selection").on_hover_text("⌘↩").clicked() {
+                if ui.button(crate::i18n::tr("Make Selection")).on_hover_text("⌘↩").clicked() {
                     actions.push(Action::PathToSelection);
                 }
-                if ui.button("Fill").clicked() {
+                if ui.button(crate::i18n::tr("Fill")).clicked() {
                     actions.push(Action::FillPath);
                 }
-                if ui.button("Stroke").clicked() {
+                if ui.button(crate::i18n::tr("Stroke")).clicked() {
                     actions.push(Action::StrokePath);
                 }
-                if ui.button("Shape Layer").clicked() {
+                if ui.button(crate::i18n::tr("Shape Layer")).clicked() {
                     actions.push(Action::PathToShape);
                 }
             }
@@ -783,9 +783,9 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
             Tool::MagicEraser => {
                 label_dim(ui, "Tolerance");
                 ui.add(egui::DragValue::new(&mut o.tolerance).range(0..=255));
-                ui.checkbox(&mut o.anti_alias, "Anti-alias");
-                ui.checkbox(&mut o.contiguous, "Contiguous");
-                ui.checkbox(&mut o.sample_merged, "Sample all layers");
+                ui.checkbox(&mut o.anti_alias, crate::i18n::tr("Anti-alias"));
+                ui.checkbox(&mut o.contiguous, crate::i18n::tr("Contiguous"));
+                ui.checkbox(&mut o.sample_merged, crate::i18n::tr("Sample all layers"));
             }
             Tool::RedEye => {
                 pct(ui, "Darken", &mut o.red_eye_darken);
@@ -799,10 +799,10 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                         format!("{} notes · {} counted · {} slices", a.notes.len(), a.counts.len(), a.slices.len()),
                     );
                 }
-                if app.tool == Tool::Slice && ui.button("Export Slices…").clicked() {
+                if app.tool == Tool::Slice && ui.button(crate::i18n::tr("Export Slices…")).clicked() {
                     actions.push(Action::ExportSlices);
                 }
-                if ui.button("Clear All").clicked() {
+                if ui.button(crate::i18n::tr("Clear All")).clicked() {
                     actions.push(Action::ClearAnnotations);
                 }
             }
@@ -816,10 +816,14 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                         dx.hypot(dy),
                         -dy.atan2(dx).to_degrees()
                     ));
-                    if ui.button("Straighten").on_hover_text("Rotate the canvas so the line is level").clicked() {
+                    if ui
+                        .button(crate::i18n::tr("Straighten"))
+                        .on_hover_text(crate::i18n::tr("Rotate the canvas so the line is level"))
+                        .clicked()
+                    {
                         actions.push(Action::Straighten);
                     }
-                    if ui.button("Clear").clicked() {
+                    if ui.button(crate::i18n::tr("Clear")).clicked() {
                         app.cv.ruler = None;
                     }
                 }
@@ -831,13 +835,13 @@ fn options_bar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 if let Some(tab) = app.tab_mut() {
                     label_dim(ui, "Angle");
                     ui.add(egui::DragValue::new(&mut tab.rotation).range(-180.0..=180.0).suffix("°").speed(1.0));
-                    if ui.button("Reset View").clicked() {
+                    if ui.button(crate::i18n::tr("Reset View")).clicked() {
                         tab.rotation = 0.0;
                     }
                 }
             }
             Tool::Hand | Tool::Zoom => {
-                if ui.button("Fit on Screen").clicked() {
+                if ui.button(crate::i18n::tr("Fit on Screen")).clicked() {
                     actions.push(Action::FitOnScreen);
                 }
                 if ui.button("100%").clicked() {
@@ -922,14 +926,16 @@ fn toolbar(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 let p = ui.painter();
                 p.rect(bg_r, 6.0, c32(app.bg), Stroke::new(1.5, t.border), egui::StrokeKind::Inside);
                 p.rect(fg_r, 6.0, c32(app.fg), Stroke::new(1.5, Color32::WHITE), egui::StrokeKind::Outside);
-                let fr = ui.interact(fg_r, ui.id().with("fg-chip"), Sense::click()).on_hover_text("Foreground color");
+                let fr = ui
+                    .interact(fg_r, ui.id().with("fg-chip"), Sense::click())
+                    .on_hover_text(crate::i18n::tr("Foreground color"));
                 let br = ui
                     .interact(
                         bg_r.intersect(egui::Rect::from_min_max(fg_r.right_bottom() - Vec2::splat(12.0), bg_r.max)),
                         ui.id().with("bg-chip"),
                         Sense::click(),
                     )
-                    .on_hover_text("Background color");
+                    .on_hover_text(crate::i18n::tr("Background color"));
                 egui::Popup::from_toggle_button_response(&fr).show(|ui| {
                     ui.set_width(240.0);
                     let mut c = app.fg;
@@ -968,7 +974,8 @@ fn status_bar(app: &mut App, ui: &mut Ui) {
             ui.label(dim(format!("{:.0}%", tab.zoom * 100.0)));
             ui.label(dim(format!("{} × {} px", tab.doc.width, tab.doc.height)));
             let n = tab.doc.layers.len();
-            ui.label(dim(format!("{n} layer{}", if n == 1 { "" } else { "s" })));
+            let word = crate::i18n::tr(if n == 1 { "count|layer" } else { "count|layers" });
+            ui.label(dim(format!("{n} {word}")));
             if let Some((x, y)) = app.cv.hover {
                 if x >= 0.0 && y >= 0.0 && x < tab.doc.width as f32 && y < tab.doc.height as f32 {
                     let c = tab.composite.get(x as u32, y as u32);
@@ -979,11 +986,11 @@ fn status_bar(app: &mut App, ui: &mut Ui) {
                 }
             }
             if let Some(b) = tab.doc.selection.as_ref().and_then(|m| m.bounds()) {
-                ui.label(dim(format!("Selection {} × {}", b.w, b.h)));
+                ui.label(dim(format!("{} {} × {}", crate::i18n::tr("status|Selection"), b.w, b.h)));
             }
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(dim(app.tool.hint().to_string()));
+            ui.label(dim(crate::i18n::tr(app.tool.hint()).into_owned()));
         });
     });
 }

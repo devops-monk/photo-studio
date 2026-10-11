@@ -86,7 +86,8 @@ pub fn tr(s: &str) -> Cow<'_, str> {
     }
 }
 
-static TABLE: LazyLock<HashMap<&'static str, [&'static str; 5]>> = LazyLock::new(|| ENTRIES.iter().copied().collect());
+static TABLE: LazyLock<HashMap<&'static str, [&'static str; 5]>> =
+    LazyLock::new(|| ENTRIES.iter().chain(crate::i18n_more::MORE).copied().collect());
 
 /// English → [Spanish, French, German, Portuguese, Italian].
 const ENTRIES: &[(&str, [&str; 5])] = &[
@@ -1236,7 +1237,7 @@ mod tests {
         assert_eq!(tr("Layer"), "Layer");
         assert_eq!(Lang::from_locale("pt_BR"), Lang::Portuguese);
         // Every entry is translated (no empty strings) and keys are unique.
-        assert_eq!(TABLE.len(), ENTRIES.len(), "duplicate keys");
-        assert!(ENTRIES.iter().all(|(_, t)| t.iter().all(|s| !s.is_empty())));
+        assert_eq!(TABLE.len(), ENTRIES.len() + crate::i18n_more::MORE.len(), "duplicate keys");
+        assert!(ENTRIES.iter().chain(crate::i18n_more::MORE).all(|(_, t)| t.iter().all(|s| !s.is_empty())));
     }
 }

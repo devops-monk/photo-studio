@@ -108,7 +108,10 @@ pub fn slider_row(
     let t = Tokens::get(ui.ctx());
     let mut changed = false;
     ui.horizontal(|ui| {
-        ui.add_sized([86.0, 20.0], egui::Label::new(egui::RichText::new(label).color(t.text_dim)).truncate());
+        ui.add_sized(
+            [86.0, 20.0],
+            egui::Label::new(egui::RichText::new(crate::i18n::tr(label)).color(t.text_dim)).truncate(),
+        );
         let w = (ui.available_width() - 64.0).max(60.0);
         ui.spacing_mut().slider_width = w;
         let r = ui.add(egui::Slider::new(v, range.clone()).show_value(false));
@@ -147,7 +150,11 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
             ui.horizontal(|ui| {
                 for (v, label) in options {
                     let sel = *value == *v;
-                    let text = egui::RichText::new(*label).size(12.0).color(if sel { t.text } else { t.text_dim });
+                    let text = egui::RichText::new(crate::i18n::tr(label)).size(12.0).color(if sel {
+                        t.text
+                    } else {
+                        t.text_dim
+                    });
                     let b = egui::Button::new(text)
                         .fill(if sel {
                             if t.dark { Color32::from_rgb(92, 92, 98) } else { Color32::WHITE }
@@ -196,7 +203,7 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
 pub fn toggle_row(ui: &mut Ui, label: &str, on: &mut bool) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
-        ui.label(label);
+        ui.label(crate::i18n::tr(label));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             changed = toggle(ui, on).changed();
         });

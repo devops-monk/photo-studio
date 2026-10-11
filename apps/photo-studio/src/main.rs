@@ -8,6 +8,7 @@ mod canvas;
 mod dialogs;
 mod doc;
 mod i18n;
+mod i18n_more;
 mod logo;
 mod menus;
 mod panels;
