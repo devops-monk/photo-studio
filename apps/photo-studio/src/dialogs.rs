@@ -98,6 +98,7 @@ const EXPORT_FORMATS: &[(&str, &str)] = &[
     ("ICO", "ico"),
     ("QOI", "qoi"),
     ("Photoshop (PSD)", "psd"),
+    ("Photoshop large (PSB)", "psb"),
     ("OpenRaster (ORA, layered)", "ora"),
     ("OpenEXR", "exr"),
 ];
@@ -344,7 +345,7 @@ pub fn show(app: &mut App, ctx: &Context, actions: &mut Vec<Action>) {
                     ui.add(egui::Slider::new(quality, 1..=100));
                     ui.end_row();
                 }
-                if EXPORT_FORMATS[*format].1 != "psd" {
+                if !matches!(EXPORT_FORMATS[*format].1, "psd" | "psb") {
                     label_dim(ui, "Scale");
                     let mut pct = *scale * 100.0;
                     if ui.add(egui::Slider::new(&mut pct, 5.0..=400.0).suffix("%")).changed() {

@@ -24,7 +24,7 @@ fn tools() -> Value {
     json!([
         {
             "name": "open",
-            "description": "Open an image or project (PNG, JPEG, WebP, TIFF, PSD, ORA, SVG, .pstudio, …) and return a document id.",
+            "description": "Open an image or project (PNG, JPEG, WebP, TIFF, PSD, PSB, ORA, SVG, .pstudio, …) and return a document id.",
             "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}
         },
         {
@@ -66,7 +66,7 @@ fn tools() -> Value {
         },
         {
             "name": "export",
-            "description": "Save the document. The extension picks the format (.png, .jpg, .webp, .psd, .ora, .pstudio, …).",
+            "description": "Save the document. The extension picks the format (.png, .jpg, .webp, .avif, .psd, .psb, .ora, .pstudio, …).",
             "inputSchema": {"type": "object", "properties": {"doc": doc, "path": {"type": "string"}, "quality": {"type": "integer"}}, "required": ["doc", "path"]}
         },
         {

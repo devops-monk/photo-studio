@@ -3656,6 +3656,7 @@ name = "studio-core"
 version = "0.3.0"
 dependencies = [
  "ab_glyph",
+ "flate2",
  "image",
  "psd",
  "quick-xml 0.38.4",

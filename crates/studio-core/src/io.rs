@@ -34,8 +34,8 @@ pub type Result<T> = std::result::Result<T, IoError>;
 
 /// File extensions the app can open.
 pub const OPEN_EXTENSIONS: &[&str] = &[
-    "pstudio", "psd", "ora", "svg", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "tga", "ico", "qoi",
-    "ppm", "pgm", "pnm", "exr", "hdr",
+    "pstudio", "psd", "psb", "ora", "svg", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "tga", "ico",
+    "qoi", "ppm", "pgm", "pnm", "exr", "hdr",
 ];
 
 /// Flat formats the app can export to.
@@ -157,6 +157,9 @@ pub fn export(doc: &Document, path: &Path, opts: &ExportOptions) -> Result<()> {
     let e = ext(path);
     if e == "psd" {
         return save_psd(doc, path);
+    }
+    if e == "psb" {
+        return save_psb(doc, path);
     }
     if e == "ora" {
         return write_atomic(path, &crate::formats::ora_bytes(doc)?);
@@ -398,7 +401,22 @@ pub fn project_from_bytes(bytes: &[u8]) -> Result<Document> {
 // ---------------------------------------------------------------------------------------------
 // Photoshop documents.
 
+/// Read a PSD or PSB. The native reader handles both (and masks, ZIP data, 16-bit); the psd
+/// crate is a fallback for anything it rejects.
 pub fn read_psd(bytes: &[u8]) -> Result<Document> {
+    match crate::photoshop::read(bytes) {
+        Ok(doc) => Ok(doc),
+        Err(native) => {
+            let fallback = std::panic::catch_unwind(|| read_psd_crate(bytes));
+            match fallback {
+                Ok(Ok(doc)) => Ok(doc),
+                _ => Err(native),
+            }
+        }
+    }
+}
+
+fn read_psd_crate(bytes: &[u8]) -> Result<Document> {
     let psd = psd::Psd::from_bytes(bytes).map_err(|e| IoError::Psd(e.to_string()))?;
     let (w, h) = (psd.width(), psd.height());
     let mut doc = Document::new(w, h, None);
@@ -461,205 +479,18 @@ pub fn read_psd(bytes: &[u8]) -> Result<Document> {
     Ok(doc)
 }
 
-fn psd_blend_key(m: BlendMode) -> &'static [u8; 4] {
-    match m {
-        BlendMode::Normal => b"norm",
-        BlendMode::Dissolve => b"diss",
-        BlendMode::Darken => b"dark",
-        BlendMode::Multiply => b"mul ",
-        BlendMode::ColorBurn => b"idiv",
-        BlendMode::LinearBurn => b"lbrn",
-        BlendMode::DarkerColor => b"dkCl",
-        BlendMode::Lighten => b"lite",
-        BlendMode::Screen => b"scrn",
-        BlendMode::ColorDodge => b"div ",
-        BlendMode::LinearDodge => b"lddg",
-        BlendMode::LighterColor => b"lgCl",
-        BlendMode::Overlay => b"over",
-        BlendMode::SoftLight => b"sLit",
-        BlendMode::HardLight => b"hLit",
-        BlendMode::VividLight => b"vLit",
-        BlendMode::LinearLight => b"lLit",
-        BlendMode::PinLight => b"pLit",
-        BlendMode::HardMix => b"hMix",
-        BlendMode::Difference => b"diff",
-        BlendMode::Exclusion => b"smud",
-        BlendMode::Subtract => b"fsub",
-        BlendMode::Divide => b"fdiv",
-        BlendMode::Hue => b"hue ",
-        BlendMode::Saturation => b"sat ",
-        BlendMode::Color => b"colr",
-        BlendMode::Luminosity => b"lum ",
-    }
-}
-
-/// Write an uncompressed, layered PSD. Text, shape and fill layers are written as pixels,
-/// masks are baked in; adjustment layers show up only in the merged image.
+/// Write a layered PSD.
 pub fn psd_bytes(doc: &Document) -> Result<Vec<u8>> {
-    let (w, h) = (doc.width, doc.height);
-    if w > 30_000 || h > 30_000 {
-        return Err(IoError::Psd("PSD is limited to 30,000 pixels per side".into()));
-    }
-    let mut b: Vec<u8> = Vec::new();
-    let be16 = |v: &mut Vec<u8>, x: u16| v.extend_from_slice(&x.to_be_bytes());
-    let be32 = |v: &mut Vec<u8>, x: u32| v.extend_from_slice(&x.to_be_bytes());
-
-    // Header.
-    b.extend_from_slice(b"8BPS");
-    be16(&mut b, 1);
-    b.extend_from_slice(&[0; 6]);
-    be16(&mut b, 4); // channels in the merged image: RGBA
-    be32(&mut b, h);
-    be32(&mut b, w);
-    be16(&mut b, 8);
-    be16(&mut b, 3); // RGB
-    be32(&mut b, 0); // colour mode data
-    be32(&mut b, 0); // image resources
-
-    // Layer info. Groups become Photoshop section records: a divider below the children and
-    // the group record (open/closed folder) above them.
-    enum Rec<'a> {
-        Pixels(&'a Layer),
-        /// Closes a group; carries the group's settings too, which some readers use.
-        Divider(&'a Layer),
-        Group(&'a Layer, bool),
-    }
-    let mut recs: Vec<Rec> = Vec::new();
-    for (i, l) in doc.layers.iter().enumerate() {
-        // Dividers for every group whose block starts here, outermost first.
-        let mut opening: Vec<(usize, &Layer)> = doc
-            .layers
-            .iter()
-            .enumerate()
-            .filter(|(gi, g)| g.is_group() && doc.block(*gi).start == i && doc.block(*gi).len() > 1)
-            .map(|(gi, g)| (doc.block(gi).len(), g))
-            .collect();
-        opening.sort_by_key(|(len, _)| std::cmp::Reverse(*len));
-        for (_, g) in opening {
-            recs.push(Rec::Divider(g));
-        }
-        match &l.kind {
-            LayerKind::Group { collapsed, .. } if doc.block(i).len() > 1 => recs.push(Rec::Group(l, *collapsed)),
-            _ if l.pixels.size() == (w, h) => recs.push(Rec::Pixels(l)),
-            _ => {}
-        }
-    }
-    let mut records = Vec::new();
-    let mut channels = Vec::new();
-    for rec in &recs {
-        let (px, name, blend, opacity, clip, visible, section): (
-            Image,
-            String,
-            BlendMode,
-            f32,
-            bool,
-            bool,
-            Option<(u32, &[u8; 4])>,
-        ) = match rec {
-            Rec::Pixels(l) => {
-                let mut px = l.pixels.clone();
-                if let Some(m) = l.active_mask() {
-                    let d = m.data();
-                    for (i, p) in px.pixels_mut().chunks_exact_mut(4).enumerate() {
-                        p[3] = ((p[3] as u32 * d[i] as u32 + 127) / 255) as u8;
-                    }
-                }
-                (px, l.name.clone(), l.blend, l.opacity, l.clip, l.visible, None)
-            }
-            Rec::Divider(g) => (
-                Image::new(0, 0),
-                "</Layer group>".into(),
-                g.blend,
-                g.opacity,
-                false,
-                g.visible,
-                Some((3, psd_blend_key(g.blend))),
-            ),
-            Rec::Group(l, collapsed) => {
-                let key: &[u8; 4] = match l.kind {
-                    LayerKind::Group { pass_through: true, .. } => b"pass",
-                    _ => psd_blend_key(l.blend),
-                };
-                (
-                    Image::new(0, 0),
-                    l.name.clone(),
-                    l.blend,
-                    l.opacity,
-                    false,
-                    l.visible,
-                    Some((if *collapsed { 2 } else { 1 }, key)),
-                )
-            }
-        };
-        let r = px.opaque_bounds().unwrap_or(crate::geom::Rect::new(0, 0, 0, 0));
-        let crop = px.crop(r);
-        let n = (r.w * r.h) as usize;
-        be32(&mut records, r.y as u32);
-        be32(&mut records, r.x as u32);
-        be32(&mut records, r.bottom() as u32);
-        be32(&mut records, r.right() as u32);
-        be16(&mut records, 4);
-        for cid in [-1i16, 0, 1, 2] {
-            records.extend_from_slice(&cid.to_be_bytes());
-            be32(&mut records, 2 + n as u32);
-        }
-        records.extend_from_slice(b"8BIM");
-        records.extend_from_slice(match section {
-            Some((_, b"pass")) => b"pass",
-            _ => psd_blend_key(blend),
-        });
-        records.push((opacity.clamp(0.0, 1.0) * 255.0).round() as u8);
-        records.push(u8::from(clip));
-        records.push(if visible { 0 } else { 2 });
-        records.push(0);
-        let name: Vec<u8> = name.chars().filter(|c| c.is_ascii()).take(255).map(|c| c as u8).collect();
-        let mut pascal = vec![name.len() as u8];
-        pascal.extend_from_slice(&name);
-        while pascal.len() % 4 != 0 {
-            pascal.push(0);
-        }
-        let mut extra = Vec::new();
-        if let Some((kind, key)) = section {
-            extra.extend_from_slice(b"8BIMlsct");
-            be32(&mut extra, 12);
-            be32(&mut extra, kind);
-            extra.extend_from_slice(b"8BIM");
-            extra.extend_from_slice(key);
-        }
-        be32(&mut records, 4 + 4 + pascal.len() as u32 + extra.len() as u32);
-        be32(&mut records, 0); // mask data
-        be32(&mut records, 0); // blending ranges
-        records.extend_from_slice(&pascal);
-        records.extend_from_slice(&extra);
-        for c in [3usize, 0, 1, 2] {
-            be16(&mut channels, 0);
-            channels.extend(crop.pixels().chunks_exact(4).map(|p| p[c]));
-        }
-    }
-    let layers = &recs;
-    let mut layer_info = Vec::new();
-    be16(&mut layer_info, layers.len() as u16);
-    layer_info.extend_from_slice(&records);
-    layer_info.extend_from_slice(&channels);
-    if layer_info.len() % 2 == 1 {
-        layer_info.push(0);
-    }
-    be32(&mut b, layer_info.len() as u32 + 4 + 4);
-    be32(&mut b, layer_info.len() as u32);
-    b.extend_from_slice(&layer_info);
-    be32(&mut b, 0); // global layer mask info
-
-    // Merged image, planar and uncompressed.
-    be16(&mut b, 0);
-    let comp = doc.composite();
-    for c in 0..4 {
-        b.extend(comp.pixels().chunks_exact(4).map(|p| p[c]));
-    }
-    Ok(b)
+    crate::photoshop::write(doc, false)
 }
 
 pub fn save_psd(doc: &Document, path: &Path) -> Result<()> {
     write_atomic(path, &psd_bytes(doc)?)
+}
+
+/// Write a layered PSB (Photoshop large document format).
+pub fn save_psb(doc: &Document, path: &Path) -> Result<()> {
+    write_atomic(path, &crate::photoshop::write(doc, true)?)
 }
 
 #[cfg(test)]
