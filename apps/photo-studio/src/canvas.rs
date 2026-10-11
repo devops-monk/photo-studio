@@ -277,7 +277,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             tab.fit(view_rect.size());
             tab.fit_pending = false;
         }
-        tab.refresh(&ctx);
+        tab.refresh(&ctx, app.proof.as_deref());
         if resp.hovered() || resp.dragged() {
             let (zoom_delta, scroll, pointer) =
                 ctx.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.pointer.hover_pos()));

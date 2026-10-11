@@ -485,7 +485,11 @@ fn screenshots() {
         ("guides", "guides", "dark"),
         ("palette", "palette", "dark"),
         ("rotated", "rotated", "dark"),
+        ("proof", "proof", "dark"),
     ] {
+        if std::env::var("PHOTO_STUDIO_ONLY").is_ok_and(|o| o != name) {
+            continue;
+        }
         let mut h = Harness::builder()
             .with_size(egui::vec2(1440.0, 900.0))
             .with_pixels_per_point(2.0)
@@ -506,6 +510,18 @@ fn screenshots() {
         }
         if variant == "rotated" {
             h.state_mut().tab_mut().unwrap().rotation = -20.0;
+        }
+        if variant == "proof" {
+            let cmyk = std::path::Path::new("/System/Library/ColorSync/Profiles/Generic CMYK Profile.icc");
+            let gray = std::env::temp_dir().join("ps-shot-gray.icc");
+            let icc = if cmyk.exists() {
+                cmyk.to_path_buf()
+            } else {
+                std::fs::write(&gray, studio_core::icc::gray_profile_bytes()).unwrap();
+                gray
+            };
+            h.state_mut().load_proof_profile(&ctx, &icc);
+            h.state_mut().tab_mut().unwrap().gamut_warning = true;
         }
         if variant == "palette" {
             h.state_mut().dialog = Some(crate::dialogs::Dialog::CommandPalette { query: "blur".into(), selected: 0 });
@@ -1174,4 +1190,33 @@ fn brush_texture_and_dual_brush_controls() {
     let row: Vec<u8> = (150..250).map(|x| l.pixels.get(x, 150).r()).collect();
     assert!(row.iter().any(|&v| v < 128), "stroke painted");
     assert!(row.iter().any(|&v| v > 160), "texture breaks it up");
+}
+
+#[test]
+fn soft_proof_toggles() {
+    use crate::actions::Action;
+    let mut h = harness();
+    let dir = std::env::temp_dir().join(format!("ps-proof-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let icc = dir.join("gray.icc");
+    std::fs::write(&icc, studio_core::icc::gray_profile_bytes()).unwrap();
+    let ctx = h.ctx.clone();
+    h.state_mut().load_proof_profile(&ctx, &icc);
+    h.run_steps(3);
+    assert!(h.state().proof.is_some());
+    assert_eq!(h.state().prefs.proof_profile.as_deref(), Some(icc.as_path()));
+    assert!(h.state().tab().unwrap().proof_on, "loading a profile turns proofing on");
+    assert!(h.state().tab().unwrap().title().contains("(Proof)"));
+    // The composite stays in sRGB while the view shows the proof.
+    h.state_mut().tab_mut().unwrap().doc.layers[0].pixels.put(5, 5, Rgba::rgb(255, 0, 0));
+    h.state_mut().tab_mut().unwrap().invalidate_all();
+    h.run_steps(2);
+    assert_eq!(h.state().tab().unwrap().composite.get(5, 5), Rgba::rgb(255, 0, 0));
+    h.state_mut().run(&ctx, Action::ToggleGamutWarning);
+    h.run_steps(2);
+    assert!(h.state().tab().unwrap().gamut_warning);
+    h.state_mut().run(&ctx, Action::ToggleProofColors);
+    h.run_steps(2);
+    assert!(!h.state().tab().unwrap().proof_on);
+    std::fs::remove_dir_all(&dir).ok();
 }

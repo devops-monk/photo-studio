@@ -67,9 +67,15 @@ pub fn read_image(path: &Path) -> Result<Image> {
     let reader = ImageReader::open(path)?.with_guessed_format()?;
     let mut decoder = reader.into_decoder()?;
     let orientation = decoder.orientation()?;
+    let icc = decoder.icc_profile().ok().flatten();
     let mut img = DynamicImage::from_decoder(decoder)?;
     img.apply_orientation(orientation);
-    Ok(Image::from_rgba_image(img.into_rgba8()))
+    let mut out = Image::from_rgba_image(img.into_rgba8());
+    // Bring files tagged with another colour space (Display P3, Adobe RGB, …) into sRGB.
+    if let Some(icc) = icc {
+        crate::icc::convert_to_srgb(&mut out, &icc);
+    }
+    Ok(out)
 }
 
 pub fn decode_image_bytes(bytes: &[u8]) -> Result<Image> {
@@ -118,8 +124,19 @@ pub fn encode(img: &Image, extension: &str, opts: &ExportOptions) -> Result<Vec<
     match e.as_str() {
         "jpg" | "jpeg" => {
             let rgb = DynamicImage::ImageRgba8(over_matte(img, opts.matte).to_rgba_image()).into_rgb8();
-            let enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, opts.jpeg_quality.clamp(1, 100));
+            let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, opts.jpeg_quality.clamp(1, 100));
+            let _ = image::ImageEncoder::set_icc_profile(&mut enc, crate::icc::srgb_profile_bytes());
             rgb.write_with_encoder(enc)?;
+        }
+        "png" => {
+            let mut enc = image::codecs::png::PngEncoder::new(&mut out);
+            let _ = image::ImageEncoder::set_icc_profile(&mut enc, crate::icc::srgb_profile_bytes());
+            img.to_rgba_image().write_with_encoder(enc)?;
+        }
+        "webp" => {
+            let mut enc = image::codecs::webp::WebPEncoder::new_lossless(&mut out);
+            let _ = image::ImageEncoder::set_icc_profile(&mut enc, crate::icc::srgb_profile_bytes());
+            img.to_rgba_image().write_with_encoder(enc)?;
         }
         "bmp" | "ppm" | "pnm" => {
             let rgb = DynamicImage::ImageRgba8(over_matte(img, opts.matte).to_rgba_image()).into_rgb8();
@@ -211,6 +228,10 @@ pub fn layered_tiff_bytes(doc: &Document) -> Result<Vec<u8>> {
     {
         let mut enc = TiffEncoder::new(&mut out).map_err(tiff_err)?.with_compression(Compression::Lzw);
         let mut img = enc.new_image::<RGBA8>(doc.width, doc.height).map_err(tiff_err)?;
+        // ICC profile (tag 34675): the working space is sRGB.
+        img.encoder()
+            .write_tag(tiff::tags::Tag::Unknown(34675), Undefined(&crate::icc::srgb_profile_bytes()))
+            .map_err(tiff_err)?;
         if doc.layers.len() > 1 || doc.layers.iter().any(|l| l.mask.is_some() || l.is_group()) {
             img.encoder()
                 .write_tag(tiff::tags::Tag::Unknown(crate::photoshop::TIFF_LAYERS_TAG), Undefined(&block))

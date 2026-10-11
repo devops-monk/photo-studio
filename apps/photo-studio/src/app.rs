@@ -38,6 +38,8 @@ pub struct Prefs {
     pub show_grid: bool,
     pub snap: bool,
     pub grid_size: f32,
+    /// ICC profile for View › Proof Colors.
+    pub proof_profile: Option<PathBuf>,
 }
 
 impl Default for Prefs {
@@ -60,6 +62,7 @@ impl Default for Prefs {
             show_grid: false,
             snap: true,
             grid_size: 64.0,
+            proof_profile: None,
         }
     }
 }
@@ -127,6 +130,8 @@ pub struct App {
     pub custom_pattern: Option<Image>,
     /// The path selected in the Paths panel.
     pub active_path: Option<usize>,
+    /// The loaded soft-proof profile (View › Proof Setup).
+    pub proof: Option<std::sync::Arc<studio_core::icc::Proof>>,
 }
 
 impl App {
@@ -164,8 +169,12 @@ impl App {
             show_right_panel: true,
             custom_pattern: None,
             active_path: None,
+            proof: None,
         };
         app.prefs.recent.retain(|p| p.exists());
+        if let Some(p) = app.prefs.proof_profile.clone() {
+            app.proof = std::fs::read(&p).ok().and_then(|b| studio_core::icc::Proof::new(&b).ok()).map(Into::into);
+        }
         for f in files {
             app.open_path(&f);
         }
@@ -258,6 +267,44 @@ impl App {
 
     fn dialog_dir(&self) -> Option<PathBuf> {
         self.prefs.last_dir.clone().or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+    }
+
+    /// View › Proof Setup: choose the output ICC profile to simulate.
+    pub fn proof_setup(&mut self, ctx: &egui::Context) {
+        let mut d = rfd::FileDialog::new()
+            .set_title("Proof Setup: choose an output profile")
+            .add_filter("ICC profile", &["icc", "icm", "ICC", "ICM"]);
+        let system = [
+            "/System/Library/ColorSync/Profiles",
+            "/Library/ColorSync/Profiles",
+            "C:\\Windows\\System32\\spool\\drivers\\color",
+            "/usr/share/color/icc",
+        ];
+        if let Some(dir) = self
+            .prefs
+            .proof_profile
+            .as_ref()
+            .and_then(|p| p.parent().map(Path::to_path_buf))
+            .or_else(|| system.iter().map(PathBuf::from).find(|p| p.is_dir()))
+        {
+            d = d.set_directory(dir);
+        }
+        let Some(path) = d.pick_file() else { return };
+        self.load_proof_profile(ctx, &path);
+    }
+
+    pub fn load_proof_profile(&mut self, ctx: &egui::Context, path: &Path) {
+        match std::fs::read(path).map_err(|e| e.to_string()).and_then(|b| studio_core::icc::Proof::new(&b)) {
+            Ok(p) => {
+                self.notify(ctx, format!("Proofing with {}", p.name));
+                self.proof = Some(p.into());
+                self.prefs.proof_profile = Some(path.to_path_buf());
+                if let Some(tab) = self.tab_mut() {
+                    tab.proof_on = true;
+                }
+            }
+            Err(e) => self.notify(ctx, format!("Couldn't use that profile: {e}")),
+        }
     }
 
     pub fn open_dialog(&mut self) {
@@ -1331,6 +1378,26 @@ impl App {
             Action::ToggleRulers => self.prefs.show_rulers = !self.prefs.show_rulers,
             Action::ToggleGuides => self.prefs.show_guides = !self.prefs.show_guides,
             Action::ToggleGrid => self.prefs.show_grid = !self.prefs.show_grid,
+            Action::ProofSetup => self.proof_setup(ctx),
+            Action::ToggleProofColors => {
+                if self.proof.is_none() {
+                    self.proof_setup(ctx);
+                }
+                let has = self.proof.is_some();
+                if let Some(tab) = self.tab_mut() {
+                    tab.proof_on = has && !tab.proof_on;
+                }
+            }
+            Action::ToggleGamutWarning => {
+                if self.proof.is_none() {
+                    self.proof_setup(ctx);
+                }
+                let has = self.proof.is_some();
+                if let Some(tab) = self.tab_mut() {
+                    tab.gamut_warning = has && !tab.gamut_warning;
+                    tab.proof_on |= tab.gamut_warning;
+                }
+            }
             Action::ToggleSnap => self.prefs.snap = !self.prefs.snap,
             Action::NewGuide => {
                 if has_doc {

@@ -20,6 +20,7 @@ zip.workspace = true
 psd.workspace = true
 flate2.workspace = true
 tiff.workspace = true
+moxcms.workspace = true
 resvg.workspace = true
 quick-xml.workspace = true
 

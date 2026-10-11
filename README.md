@@ -22,6 +22,7 @@ One self-contained binary, no runtime, works offline.</p>
 - **Tools for notes and output**: Note, Count and Slice (with Export Slices)
 - **Workflow**: rulers, guides, grid and snapping; a ⌘F command palette; Actions that record, replay and batch-process folders; unlimited visual history
 - **Files**: layered `.pstudio` projects; PSD and PSB (large documents) with groups and masks; layered TIFF; OpenRaster with groups; SVG, OpenEXR and HDR; and PNG, JPEG, WebP, TIFF, BMP, GIF, TGA, ICO, QOI and PNM; AVIF export
+- **Color management**: images tagged Display P3, Adobe RGB and other ICC profiles are converted into the sRGB working space; CMYK and Lab Photoshop files open in color; exports embed an sRGB profile; soft proofing with any output ICC profile, with a gamut warning (⇧⌘Y)
 - Light and dark themes, and keyboard shortcuts familiar from other editors
 
 ## Install

@@ -47,6 +47,11 @@ pub struct DocTab {
     /// The file this document was opened from (for flat images, `path` stays empty).
     pub source: Option<PathBuf>,
     qm_tex: Option<(u64, TextureHandle)>,
+    /// View › Proof Colors and Gamut Warning for this document.
+    pub proof_on: bool,
+    pub gamut_warning: bool,
+    /// The proof state the tiles were last built with.
+    proof_shown: (bool, bool, usize),
 }
 
 impl DocTab {
@@ -76,6 +81,9 @@ impl DocTab {
             histogram: None,
             source: None,
             qm_tex: None,
+            proof_on: false,
+            gamut_warning: false,
+            proof_shown: (false, false, 0),
         }
     }
 
@@ -88,7 +96,8 @@ impl DocTab {
     }
 
     pub fn title(&self) -> String {
-        format!("{}{}", self.name, if self.is_dirty() { " •" } else { "" })
+        let proof = if self.proof_on { " (Proof)" } else { "" };
+        format!("{}{proof}{}", self.name, if self.is_dirty() { " •" } else { "" })
     }
 
     /// Recomposite `r` (canvas pixels) on the next refresh.
@@ -150,8 +159,19 @@ impl DocTab {
         self.invalidate_all();
     }
 
-    /// Bring the composite and textures up to date.
-    pub fn refresh(&mut self, ctx: &egui::Context) {
+    /// Bring the composite and textures up to date. With a `proof` profile and Proof Colors on,
+    /// the textures show the soft proof; the composite itself stays in sRGB.
+    pub fn refresh(&mut self, ctx: &egui::Context, proof: Option<&studio_core::icc::Proof>) {
+        let proof = proof.filter(|_| self.proof_on);
+        let shown = (proof.is_some(), self.gamut_warning, proof.map_or(0, |p| p as *const _ as usize));
+        if shown != self.proof_shown {
+            self.proof_shown = shown;
+            self.dirty = Some(self.doc.bounds());
+        }
+        let display = |img: Image| match proof {
+            Some(p) => p.apply(&img, shown.1),
+            None => img,
+        };
         let (w, h) = (self.doc.width, self.doc.height);
         if self.composite.size() != (w, h) || self.tiles_stale {
             self.composite = Image::new(w, h);
@@ -176,7 +196,7 @@ impl DocTab {
             for ty in (0..h).step_by(TILE as usize) {
                 for tx in (0..w).step_by(TILE as usize) {
                     let rect = Rect::new(tx as i32, ty as i32, TILE.min(w - tx), TILE.min(h - ty));
-                    let img = to_color_image(&self.composite.crop(rect));
+                    let img = to_color_image(&display(self.composite.crop(rect)));
                     let tex = ctx.load_texture(format!("tile-{}-{tx}-{ty}", self.doc_key()), img, opts);
                     self.tiles.push(Tile { rect, tex });
                 }
@@ -188,7 +208,7 @@ impl DocTab {
                     continue;
                 }
                 // Whole-tile updates keep mipmaps consistent.
-                t.tex.set(to_color_image(&self.composite.crop(t.rect)), opts);
+                t.tex.set(to_color_image(&display(self.composite.crop(t.rect))), opts);
             }
         }
         if self.doc.selection.is_none() {

@@ -1,6 +1,7 @@
 //! Photoshop documents: PSD and its large-document variant PSB.
 //!
-//! Reads 8- and 16-bit RGB and grayscale files with raw, RLE or ZIP channel data, groups,
+//! Reads 8-, 16- and 32-bit RGB, CMYK, Lab and grayscale files (converted to sRGB, through the
+//! embedded ICC profile when there is one) with raw, RLE or ZIP channel data, groups,
 //! layer masks and Unicode layer names. Writes RLE-compressed 8-bit RGB with the same.
 
 use std::io::Read;
@@ -351,12 +352,10 @@ fn read_header(c: &mut Cur) -> Result<Header> {
     if w == 0 || h == 0 || w > max || h > max {
         return Err(bad(format!("bad size {w} × {h}")));
     }
-    if !matches!(mode, 0 | 1 | 3 | 8) {
+    if !matches!(mode, 0 | 1 | 3 | 4 | 8 | 9) {
         let name = match mode {
             2 => "indexed",
-            4 => "CMYK",
             7 => "multichannel",
-            9 => "Lab",
             _ => "this",
         };
         return Err(bad(format!("{name} color mode is not supported")));
@@ -364,18 +363,91 @@ fn read_header(c: &mut Cur) -> Result<Header> {
     Ok(Header { big, channels, w, h, depth, mode })
 }
 
-/// Assemble RGBA from planar channels keyed by id (0, 1, 2 = colour, -1 = alpha).
-fn assemble(ch: &[(i16, Vec<u8>)], n: usize, gray: bool) -> Vec<u8> {
-    let get = |id: i16| ch.iter().find(|c| c.0 == id).map(|c| &c.1);
-    let (r, g, b, a) = if gray { (get(0), get(0), get(0), get(-1)) } else { (get(0), get(1), get(2), get(-1)) };
-    let mut out = vec![0u8; n * 4];
-    for i in 0..n {
-        out[i * 4] = r.map_or(0, |v| v[i]);
-        out[i * 4 + 1] = g.map_or(0, |v| v[i]);
-        out[i * 4 + 2] = b.map_or(0, |v| v[i]);
-        out[i * 4 + 3] = a.map_or(255, |v| v[i]);
+/// Colour mode plus the embedded ICC profile, for turning channels into sRGB.
+struct ColorCtx {
+    mode: u16,
+    icc: Option<Vec<u8>>,
+}
+
+impl ColorCtx {
+    fn gray(&self) -> bool {
+        matches!(self.mode, 0 | 1 | 8)
     }
-    out
+
+    /// Channel ids of the merged image, in file order.
+    fn merged_ids(&self) -> &'static [i16] {
+        match self.mode {
+            0 | 1 | 8 => &[0, -1],
+            4 => &[0, 1, 2, 3, -1],
+            _ => &[0, 1, 2, -1],
+        }
+    }
+}
+
+/// Assemble RGBA from planar channels keyed by id (0, 1, 2[, 3] = colour, -1 = alpha).
+fn assemble(ch: &[(i16, Vec<u8>)], n: usize, cm: &ColorCtx) -> Vec<u8> {
+    let get = |id: i16| ch.iter().find(|c| c.0 == id).map(|c| &c.1);
+    let alpha = get(-1);
+    let at = |v: Option<&Vec<u8>>, i: usize, d: u8| v.map_or(d, |v| v[i]);
+    match cm.mode {
+        4 => {
+            // Photoshop stores CMYK inverted: 255 means no ink.
+            let (c, m, y, k) = (get(0), get(1), get(2), get(3));
+            let cmyk: Vec<[u8; 4]> = (0..n)
+                .map(|i| [255 - at(c, i, 255), 255 - at(m, i, 255), 255 - at(y, i, 255), 255 - at(k, i, 255)])
+                .collect();
+            let a: Vec<u8> = (0..n).map(|i| at(alpha, i, 255)).collect();
+            crate::icc::cmyk_to_rgba(&cmyk, &a, cm.icc.as_deref())
+        }
+        9 => {
+            let (l, a, b) = (get(0), get(1), get(2));
+            let mut out = vec![0u8; n * 4];
+            for i in 0..n {
+                let rgb = crate::icc::lab_to_srgb(
+                    at(l, i, 0) as f32 / 255.0 * 100.0,
+                    at(a, i, 128) as f32 - 128.0,
+                    at(b, i, 128) as f32 - 128.0,
+                );
+                out[i * 4..i * 4 + 3].copy_from_slice(&rgb);
+                out[i * 4 + 3] = at(alpha, i, 255);
+            }
+            out
+        }
+        _ => {
+            let (r, g, b) = if cm.gray() { (get(0), get(0), get(0)) } else { (get(0), get(1), get(2)) };
+            let mut out = vec![0u8; n * 4];
+            for i in 0..n {
+                out[i * 4] = at(r, i, 0);
+                out[i * 4 + 1] = at(g, i, 0);
+                out[i * 4 + 2] = at(b, i, 0);
+                out[i * 4 + 3] = at(alpha, i, 255);
+            }
+            out
+        }
+    }
+}
+
+/// The ICC profile from the image resources (id 1039), if any.
+fn icc_resource(res: &[u8]) -> Option<Vec<u8>> {
+    let mut c = Cur { b: res, p: 0 };
+    while c.left() >= 12 {
+        if c.take(4).ok()? != b"8BIM" {
+            return None;
+        }
+        let id = c.u16().ok()?;
+        let n = c.u8().ok()? as usize;
+        // The Pascal name, padded so the name with its length byte is even.
+        c.take(n + (n + 1) % 2).ok()?;
+        let size = c.u32().ok()? as usize;
+        let data = c.take(size.min(c.left())).ok()?;
+        if size % 2 == 1 && c.left() > 0 {
+            c.take(1).ok()?;
+        }
+        if id == 1039 {
+            return Some(data.to_vec());
+        }
+    }
+    None
 }
 
 /// Place a w×h RGBA tile at (x, y) on a canvas-sized image.
@@ -403,11 +475,10 @@ pub fn read(bytes: &[u8]) -> Result<Document> {
     let mut c = Cur { b: bytes, p: 0 };
     let hd = read_header(&mut c)?;
     let big = hd.big;
-    let gray = matches!(hd.mode, 0 | 1 | 8);
     let cmlen = c.u32()? as usize;
     c.take(cmlen)?;
     let reslen = c.u32()? as usize;
-    c.take(reslen)?;
+    let cm = ColorCtx { mode: hd.mode, icc: icc_resource(c.take(reslen)?) };
     let lm_len = c.len(big)?;
     let mut lm = c.sub(lm_len)?;
     let (cw, chh) = (hd.w, hd.h);
@@ -429,7 +500,7 @@ pub fn read(bytes: &[u8]) -> Result<Document> {
         }
         if li.left() >= 2 {
             let recs = read_records(&mut li, big)?;
-            build_layers(&mut doc, &recs, &mut li, &hd, gray)?;
+            build_layers(&mut doc, &recs, &mut li, &hd, &cm)?;
         }
     }
 
@@ -450,7 +521,7 @@ pub fn read(bytes: &[u8]) -> Result<Document> {
             }
             let mut p = nch * h * cwid;
             let row = w * (hd.depth as usize / 8).max(1);
-            for k in 0..nch.min(4) {
+            for k in 0..nch.min(5) {
                 let mut v = Vec::with_capacity(row * h);
                 for y in 0..h {
                     let n = lens[k * h + y];
@@ -462,22 +533,31 @@ pub fn read(bytes: &[u8]) -> Result<Document> {
             }
         } else {
             let plane = w * h * (hd.depth as usize / 8).max(1);
-            for k in 0..nch.min(4) {
+            for k in 0..nch.min(5) {
                 let s = (k * plane).min(data.len());
                 let e = ((k + 1) * plane).min(data.len());
                 planes.push(decode_channel(comp, &data[s..e], w, h, hd.depth, big)?);
             }
         }
-        let ids: &[i16] = if gray { &[0, -1] } else { &[0, 1, 2, -1] };
-        let ch: Vec<(i16, Vec<u8>)> = ids.iter().copied().zip(planes).collect();
+        let ch: Vec<(i16, Vec<u8>)> = cm.merged_ids().iter().copied().zip(planes).collect();
         let id = doc.new_id();
-        doc.layers.push(Layer::raster(id, "Background", Image::from_raw(cw, chh, assemble(&ch, w * h, gray))));
+        doc.layers.push(Layer::raster(id, "Background", Image::from_raw(cw, chh, assemble(&ch, w * h, &cm))));
+    }
+    // RGB files in another colour space (Adobe RGB, P3, …) are converted into sRGB.
+    if hd.mode == 3 {
+        if let Some(icc) = &cm.icc {
+            for l in &mut doc.layers {
+                if !l.is_group() {
+                    crate::icc::convert_to_srgb(&mut l.pixels, icc);
+                }
+            }
+        }
     }
     doc.active = doc.layers.len() - 1;
     Ok(doc)
 }
 
-fn build_layers(doc: &mut Document, recs: &[Record], data: &mut Cur, hd: &Header, gray: bool) -> Result<()> {
+fn build_layers(doc: &mut Document, recs: &[Record], data: &mut Cur, hd: &Header, cm: &ColorCtx) -> Result<()> {
     let (cw, chh) = (hd.w, hd.h);
     // Records run bottom to top; a divider opens a group whose folder record closes it.
     let mut open: Vec<LayerId> = Vec::new();
@@ -526,7 +606,7 @@ fn build_layers(doc: &mut Document, recs: &[Record], data: &mut Cur, hd: &Header
                 doc.layers.push(g);
             }
             _ => {
-                let rgba = assemble(&planes, w * h, gray);
+                let rgba = assemble(&planes, w * h, cm);
                 let id = doc.new_id();
                 let mut l = Layer::raster(id, r.name.clone(), place(cw, chh, left, top, w, h, &rgba));
                 l.visible = !r.hidden;
@@ -854,7 +934,7 @@ pub fn read_tiff_layers(data: &[u8], w: u32, h: u32) -> Result<Option<Document>>
         let recs = read_records(&mut li, false)?;
         let mut doc = Document::new(w, h, None);
         doc.layers.clear();
-        build_layers(&mut doc, &recs, &mut li, &hd, false)?;
+        build_layers(&mut doc, &recs, &mut li, &hd, &ColorCtx { mode: 3, icc: None })?;
         if doc.layers.is_empty() {
             return Ok(None);
         }
@@ -891,6 +971,50 @@ mod tests {
         let back = read(&write(&d, true).unwrap()).unwrap();
         assert_eq!(back.width, 30_100);
         assert_eq!(back.layers[0].pixels.get(30_050, 1), Rgba::rgb(200, 100, 50));
+    }
+
+    /// A merged-image-only PSD with raw planes.
+    fn flat_psd(mode: u16, planes: &[&[u8]], w: u32, h: u32, resources: &[u8]) -> Vec<u8> {
+        let mut b = b"8BPS\x00\x01\x00\x00\x00\x00\x00\x00".to_vec();
+        b.extend_from_slice(&(planes.len() as u16).to_be_bytes());
+        b.extend_from_slice(&h.to_be_bytes());
+        b.extend_from_slice(&w.to_be_bytes());
+        b.extend_from_slice(&8u16.to_be_bytes());
+        b.extend_from_slice(&mode.to_be_bytes());
+        b.extend_from_slice(&0u32.to_be_bytes());
+        b.extend_from_slice(&(resources.len() as u32).to_be_bytes());
+        b.extend_from_slice(resources);
+        b.extend_from_slice(&0u32.to_be_bytes());
+        b.extend_from_slice(&[0, 0]);
+        for p in planes {
+            b.extend_from_slice(p);
+        }
+        b
+    }
+
+    #[test]
+    fn reads_cmyk_lab_and_tagged_rgb() {
+        // CMYK, stored inverted: pixel 0 = no ink (white), pixel 1 = full magenta + yellow (red).
+        let d = read(&flat_psd(4, &[&[255, 255], &[255, 0], &[255, 0], &[255, 255]], 2, 1, &[])).unwrap();
+        assert_eq!(d.layers[0].pixels.get(0, 0), Rgba::rgb(255, 255, 255));
+        assert_eq!(d.layers[0].pixels.get(1, 0), Rgba::rgb(255, 0, 0));
+        // Lab: L=100 white, L=0 black.
+        let d = read(&flat_psd(9, &[&[255, 0], &[128, 128], &[128, 128]], 2, 1, &[])).unwrap();
+        assert_eq!(d.layers[0].pixels.get(0, 0), Rgba::rgb(255, 255, 255));
+        assert_eq!(d.layers[0].pixels.get(1, 0), Rgba::rgb(0, 0, 0));
+        // RGB tagged Display P3: pure P3 green is converted (clipped) into sRGB.
+        let icc = moxcms::ColorProfile::new_display_p3().encode().unwrap();
+        let mut res = b"8BIM".to_vec();
+        res.extend_from_slice(&1039u16.to_be_bytes());
+        res.extend_from_slice(&[0, 0]);
+        res.extend_from_slice(&(icc.len() as u32).to_be_bytes());
+        res.extend_from_slice(&icc);
+        if icc.len() % 2 == 1 {
+            res.push(0);
+        }
+        let d = read(&flat_psd(3, &[&[0, 128], &[255, 128], &[0, 128]], 2, 1, &res)).unwrap();
+        let g = d.layers[0].pixels.get(0, 0);
+        assert!(g.g() > 240 && g.r() < 40, "{g:?}");
     }
 
     #[test]

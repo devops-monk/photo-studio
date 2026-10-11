@@ -3658,6 +3658,7 @@ dependencies = [
  "ab_glyph",
  "flate2",
  "image",
+ "moxcms",
  "psd",
  "quick-xml 0.38.4",
  "rayon",

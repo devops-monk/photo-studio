@@ -150,6 +150,9 @@ pub fn action_label(a: &Action) -> String {
         Action::ToggleRulers => "Rulers".into(),
         Action::ToggleGuides => "Guides".into(),
         Action::ToggleGrid => "Grid".into(),
+        Action::ProofSetup => "Proof Setup…".into(),
+        Action::ToggleProofColors => "Proof Colors".into(),
+        Action::ToggleGamutWarning => "Gamut Warning".into(),
         Action::ToggleSnap => "Snap".into(),
         Action::NewGuide => "New Guide…".into(),
         Action::ClearGuides => "Clear Guides".into(),
@@ -454,6 +457,10 @@ pub fn bar(app: &App, ui: &mut Ui, out: &mut Vec<Action>) {
             item(ui, out, Action::ClearGuides, doc && tab.is_some_and(|t| !t.doc.guides.is_empty()));
             item(ui, out, Action::ClearAnnotations, doc);
             ui.separator();
+            item(ui, out, Action::ProofSetup, true);
+            check(ui, out, Action::ToggleProofColors, tab.is_some_and(|t| t.proof_on));
+            check(ui, out, Action::ToggleGamutWarning, tab.is_some_and(|t| t.gamut_warning));
+            ui.separator();
             check(ui, out, Action::TogglePixelGrid, app.prefs.pixel_grid);
             check(ui, out, Action::ToggleSelectionEdges, app.show_edges);
             ui.separator();
@@ -586,6 +593,9 @@ pub fn all_commands() -> Vec<Action> {
         Action::ToggleGuides,
         Action::ToggleGrid,
         Action::ToggleSnap,
+        Action::ProofSetup,
+        Action::ToggleProofColors,
+        Action::ToggleGamutWarning,
         Action::NewGuide,
         Action::ClearGuides,
         Action::TogglePixelGrid,
