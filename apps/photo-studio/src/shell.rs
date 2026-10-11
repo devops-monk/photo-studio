@@ -356,47 +356,7 @@ fn tip_controls(ui: &mut Ui, tip: &mut studio_core::paint::BrushTip, show_hardne
     let r = ui.button(format!("{} Brush", ph::PAINT_BRUSH_BROAD)).on_hover_text("Presets and brush settings");
     egui::Popup::from_toggle_button_response(&r).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(
         |ui| {
-            ui.set_width(260.0);
-            ui.label(egui::RichText::new("Presets").font(crate::theme::medium(12.5)));
-            ui.horizontal_wrapped(|ui| {
-                for (name, preset) in studio_core::paint::brush_presets() {
-                    if ui.small_button(name).clicked() {
-                        let size = tip.size;
-                        *tip = preset;
-                        // Keep the user's size unless the preset is about size.
-                        if !matches!(name, "Airbrush" | "Spray" | "Ink") {
-                            tip.size = size;
-                        }
-                    }
-                }
-            });
-            ui.separator();
-            tip_preview(ui, tip);
-            let pct_slider = |ui: &mut Ui, label: &str, v: &mut f32| {
-                let mut p = *v * 100.0;
-                if crate::widgets::slider_row(ui, label, &mut p, 0.0..=100.0, "%", 0) {
-                    *v = p / 100.0;
-                }
-            };
-            crate::widgets::slider_row(ui, "Size", &mut tip.size, 1.0..=2500.0, " px", 0);
-            pct_slider(ui, "Hardness", &mut tip.hardness);
-            let mut sp = tip.spacing * 100.0;
-            if crate::widgets::slider_row(ui, "Spacing", &mut sp, 1.0..=300.0, "%", 0) {
-                tip.spacing = sp / 100.0;
-            }
-            crate::widgets::slider_row(ui, "Angle", &mut tip.angle, -180.0..=180.0, "°", 0);
-            pct_slider(ui, "Roundness", &mut tip.roundness);
-            tip.roundness = tip.roundness.max(0.05);
-            let mut sc = tip.scatter * 100.0;
-            if crate::widgets::slider_row(ui, "Scatter", &mut sc, 0.0..=500.0, "%", 0) {
-                tip.scatter = sc / 100.0;
-            }
-            pct_slider(ui, "Size jitter", &mut tip.size_jitter);
-            pct_slider(ui, "Opacity jitter", &mut tip.opacity_jitter);
-            pct_slider(ui, "Smoothing", &mut tip.smoothing);
-            ui.label(egui::RichText::new("Color dynamics").font(crate::theme::medium(12.0)));
-            pct_slider(ui, "Hue jitter", &mut tip.hue_jitter);
-            pct_slider(ui, "Fg/Bg jitter", &mut tip.fg_bg_jitter);
+            egui::ScrollArea::vertical().max_height(560.0).show(ui, |ui| tip_settings(ui, tip));
         },
     );
     label_dim(ui, "Size");
@@ -406,6 +366,79 @@ fn tip_controls(ui: &mut Ui, tip: &mut studio_core::paint::BrushTip, show_hardne
         let mut h = tip.hardness * 100.0;
         if ui.add(egui::DragValue::new(&mut h).range(0.0..=100.0).suffix("%")).changed() {
             tip.hardness = h / 100.0;
+        }
+    }
+}
+
+fn tip_settings(ui: &mut Ui, tip: &mut studio_core::paint::BrushTip) {
+    ui.set_width(260.0);
+    ui.label(egui::RichText::new("Presets").font(crate::theme::medium(12.5)));
+    ui.horizontal_wrapped(|ui| {
+        for (name, preset) in studio_core::paint::brush_presets() {
+            if ui.small_button(name).clicked() {
+                let size = tip.size;
+                *tip = preset;
+                // Keep the user's size unless the preset is about size.
+                if !matches!(name, "Airbrush" | "Spray" | "Ink") {
+                    tip.size = size;
+                }
+            }
+        }
+    });
+    ui.separator();
+    tip_preview(ui, tip);
+    let pct_slider = |ui: &mut Ui, label: &str, v: &mut f32| {
+        let mut p = *v * 100.0;
+        if crate::widgets::slider_row(ui, label, &mut p, 0.0..=100.0, "%", 0) {
+            *v = p / 100.0;
+        }
+    };
+    crate::widgets::slider_row(ui, "Size", &mut tip.size, 1.0..=2500.0, " px", 0);
+    pct_slider(ui, "Hardness", &mut tip.hardness);
+    let mut sp = tip.spacing * 100.0;
+    if crate::widgets::slider_row(ui, "Spacing", &mut sp, 1.0..=300.0, "%", 0) {
+        tip.spacing = sp / 100.0;
+    }
+    crate::widgets::slider_row(ui, "Angle", &mut tip.angle, -180.0..=180.0, "°", 0);
+    pct_slider(ui, "Roundness", &mut tip.roundness);
+    tip.roundness = tip.roundness.max(0.05);
+    let mut sc = tip.scatter * 100.0;
+    if crate::widgets::slider_row(ui, "Scatter", &mut sc, 0.0..=500.0, "%", 0) {
+        tip.scatter = sc / 100.0;
+    }
+    pct_slider(ui, "Size jitter", &mut tip.size_jitter);
+    pct_slider(ui, "Opacity jitter", &mut tip.opacity_jitter);
+    pct_slider(ui, "Smoothing", &mut tip.smoothing);
+    ui.label(egui::RichText::new("Color dynamics").font(crate::theme::medium(12.0)));
+    pct_slider(ui, "Hue jitter", &mut tip.hue_jitter);
+    pct_slider(ui, "Fg/Bg jitter", &mut tip.fg_bg_jitter);
+    ui.label(egui::RichText::new("Texture").font(crate::theme::medium(12.0)));
+    ui.horizontal_wrapped(|ui| {
+        for t in studio_core::paint::BrushTexture::ALL {
+            ui.selectable_value(&mut tip.texture, t, t.name());
+        }
+    });
+    if tip.texture != studio_core::paint::BrushTexture::None {
+        let mut sc = tip.texture_scale * 100.0;
+        if crate::widgets::slider_row(ui, "Scale", &mut sc, 25.0..=400.0, "%", 0) {
+            tip.texture_scale = sc / 100.0;
+        }
+        pct_slider(ui, "Depth", &mut tip.texture_depth);
+    }
+    ui.label(egui::RichText::new("Dual brush").font(crate::theme::medium(12.0)));
+    let mut on = tip.dual_size > 0.0;
+    if ui.checkbox(&mut on, "Enabled").changed() {
+        tip.dual_size = if on { (tip.size / 6.0).max(2.0) } else { 0.0 };
+    }
+    if tip.dual_size > 0.0 {
+        crate::widgets::slider_row(ui, "Tip size", &mut tip.dual_size, 1.0..=200.0, " px", 0);
+        let mut n = tip.dual_count as f32;
+        if crate::widgets::slider_row(ui, "Count", &mut n, 1.0..=32.0, "", 0) {
+            tip.dual_count = n as u32;
+        }
+        let mut sc = tip.dual_scatter * 100.0;
+        if crate::widgets::slider_row(ui, "Dual scatter", &mut sc, 0.0..=150.0, "%", 0) {
+            tip.dual_scatter = sc / 100.0;
         }
     }
 }

@@ -1127,3 +1127,51 @@ fn vector_mask_from_path_and_edit() {
     let tab = h.state().tab().unwrap();
     assert_eq!(tab.composite.get(280, 240), Rgba::WHITE, "mask grew with the anchor");
 }
+
+#[test]
+fn brush_texture_and_dual_brush_controls() {
+    let mut h = harness();
+    h.state_mut().set_tool(Tool::Brush);
+    h.run_steps(2);
+    h.get_by_label(&format!("{} Brush", egui_phosphor::regular::PAINT_BRUSH_BROAD)).click();
+    h.run_steps(2);
+    let inside = h.get_by_label("Presets").rect().center();
+    h.event(Event::PointerMoved(inside));
+    h.event(Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -800.0),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+    });
+    h.run_steps(4);
+    h.get_by_label("Canvas").click();
+    h.run_steps(2);
+    // The texture sliders appear and push the dual brush further down.
+    h.event(Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -800.0),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+    });
+    h.run_steps(4);
+    h.get_by_label("Enabled").click();
+    h.run_steps(2);
+    let tip = h.state().opts.tip;
+    assert_eq!(tip.texture, studio_core::paint::BrushTexture::Canvas);
+    assert!(tip.dual_size > 0.0, "dual brush switched on");
+    // Painting with it leaves a broken, textured stroke rather than a solid one.
+    h.event(Event::Key {
+        key: Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    });
+    h.run_steps(2);
+    h.state_mut().fg = Rgba::rgb(0, 0, 0);
+    drag(&mut h, (100.0, 150.0), (300.0, 150.0), Modifiers::NONE);
+    let l = &h.state().tab().unwrap().doc.layers[0];
+    let row: Vec<u8> = (150..250).map(|x| l.pixels.get(x, 150).r()).collect();
+    assert!(row.iter().any(|&v| v < 128), "stroke painted");
+    assert!(row.iter().any(|&v| v > 160), "texture breaks it up");
+}

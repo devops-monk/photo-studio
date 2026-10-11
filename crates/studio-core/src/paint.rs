@@ -41,11 +41,82 @@ pub struct BrushTip {
     pub hue_jitter: f32,
     /// Colour dynamics: random mix towards the background colour per dab (0..1).
     pub fg_bg_jitter: f32,
+    /// Texture: a surface pattern fixed to the canvas that the paint catches on.
+    pub texture: BrushTexture,
+    /// Texture scale (1 = natural size).
+    pub texture_scale: f32,
+    /// How strongly the texture cuts into the paint (0..1).
+    pub texture_depth: f32,
+    /// Dual brush: diameter of the secondary tip in pixels (0 = off).
+    pub dual_size: f32,
+    /// Dual brush: secondary dabs per primary dab.
+    pub dual_count: u32,
+    /// Dual brush: how far the secondary dabs spread, as a fraction of the primary diameter.
+    pub dual_scatter: f32,
+}
+
+/// Surface textures for the brush's Texture option.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BrushTexture {
+    #[default]
+    None,
+    Canvas,
+    Paper,
+    Burlap,
+    Grain,
+}
+
+impl BrushTexture {
+    pub const ALL: [BrushTexture; 5] = [Self::None, Self::Canvas, Self::Paper, Self::Burlap, Self::Grain];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Canvas => "Canvas",
+            Self::Paper => "Paper",
+            Self::Burlap => "Burlap",
+            Self::Grain => "Grain",
+        }
+    }
+
+    /// Surface height (0..1) at canvas position (x, y); paint sticks to the high points.
+    pub fn sample(self, x: f32, y: f32, scale: f32) -> f32 {
+        let s = scale.max(0.1);
+        let (u, v) = (x / s, y / s);
+        let weave = |u: f32, v: f32, period: f32| {
+            // Over-under threads: horizontal threads on top in alternating cells.
+            let (cu, cv) = ((u / period).floor() as i32, (v / period).floor() as i32);
+            let (fu, fv) = ((u / period).fract(), (v / period).fract());
+            let thread = |f: f32| (f * std::f32::consts::PI).sin();
+            if (cu + cv) & 1 == 0 { thread(fv) } else { thread(fu) }
+        };
+        match self {
+            Self::None => 1.0,
+            Self::Canvas => 0.25 + 0.75 * weave(u, v, 3.0),
+            Self::Paper => crate::filters::fbm(u / 6.0, v / 6.0, 17).powf(0.7),
+            Self::Burlap => {
+                let n = crate::blend::pixel_noise(u as u32, v as u32);
+                (0.15 + 0.7 * weave(u, v, 6.0) + 0.3 * n).min(1.0)
+                    * (0.6 + 0.4 * crate::filters::fbm(u / 20.0, v / 20.0, 5))
+            }
+            Self::Grain => crate::blend::pixel_noise(u as u32, v as u32),
+        }
+    }
 }
 
 impl BrushTip {
     pub fn has_color_dynamics(&self) -> bool {
         self.hue_jitter > 0.0 || self.fg_bg_jitter > 0.0
+    }
+
+    /// Texture multiplier for coverage at canvas pixel (x, y).
+    #[inline]
+    pub fn texture_at(&self, x: i32, y: i32) -> f32 {
+        if self.texture == BrushTexture::None || self.texture_depth <= 0.0 {
+            return 1.0;
+        }
+        let t = self.texture.sample(x as f32 + 0.5, y as f32 + 0.5, self.texture_scale);
+        1.0 - self.texture_depth.clamp(0.0, 1.0) * (1.0 - t)
     }
 }
 
@@ -64,6 +135,12 @@ impl Default for BrushTip {
             smoothing: 0.0,
             hue_jitter: 0.0,
             fg_bg_jitter: 0.0,
+            texture: BrushTexture::None,
+            texture_scale: 1.0,
+            texture_depth: 0.6,
+            dual_size: 0.0,
+            dual_count: 4,
+            dual_scatter: 0.5,
         }
     }
 }
@@ -105,6 +182,35 @@ pub fn brush_presets() -> Vec<(&'static str, BrushTip)> {
         (
             "Confetti",
             BrushTip { size: 14.0, hardness: 0.9, scatter: 2.0, size_jitter: 0.6, hue_jitter: 1.0, spacing: 0.6, ..d },
+        ),
+        (
+            "Dry Brush",
+            BrushTip {
+                size: 40.0,
+                hardness: 0.7,
+                spacing: 0.08,
+                texture: BrushTexture::Canvas,
+                texture_scale: 1.5,
+                texture_depth: 0.7,
+                dual_size: 12.0,
+                dual_count: 14,
+                dual_scatter: 0.42,
+                ..d
+            },
+        ),
+        (
+            "Charcoal",
+            BrushTip {
+                size: 26.0,
+                hardness: 0.5,
+                roundness: 0.6,
+                angle: 30.0,
+                spacing: 0.1,
+                opacity_jitter: 0.3,
+                texture: BrushTexture::Paper,
+                texture_depth: 0.9,
+                ..d
+            },
         ),
         (
             "Foliage",
@@ -339,13 +445,35 @@ impl StrokeEngine {
         }
         let w = self.width as usize;
         let sel = self.selection.as_ref();
+        // Dual brush: the dab only paints where a scatter of smaller secondary dabs lands.
+        let dual: Vec<(f32, f32)> = if tip.dual_size > 0.0 {
+            (0..tip.dual_count.clamp(1, 64))
+                .map(|k| {
+                    let a = rnd(100 + 2 * k) * std::f32::consts::TAU;
+                    let d = rnd(101 + 2 * k).sqrt() * tip.dual_scatter * tip.size;
+                    (cx + a.cos() * d, cy + a.sin() * d)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let dual_tip = BrushTip { size: tip.dual_size.max(1.0), hardness: 0.7, ..BrushTip::default() };
         let cov_at = |x: i32, y: i32| {
-            let (dx, dy) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
+            let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+            let (dx, dy) = (px - cx, py - cy);
             // Into the tip's frame: rotate, then stretch the short axis.
             let u = dx * ca + dy * sa;
             let v = (-dx * sa + dy * ca) / round;
             let d = (u * u + v * v).sqrt();
-            tip.falloff(d) * sel.map_or(1.0, |m| m.get(x as u32, y as u32) as f32 / 255.0)
+            let mut c = tip.falloff(d);
+            if !dual.is_empty() && c > 0.0 {
+                let m = dual
+                    .iter()
+                    .map(|&(qx, qy)| dual_tip.falloff(((px - qx).powi(2) + (py - qy).powi(2)).sqrt()))
+                    .fold(0.0f32, f32::max);
+                c *= m;
+            }
+            c * sel.map_or(1.0, |m| m.get(x as u32, y as u32) as f32 / 255.0)
         };
 
         match &self.kind {
@@ -545,7 +673,7 @@ impl StrokeEngine {
         for y in rect.y..rect.bottom() {
             for x in rect.x..rect.right() {
                 let i = y as usize * w + x as usize;
-                let a = self.coverage[i] * op;
+                let a = self.coverage[i] * op * self.tip.texture_at(x, y);
                 if a <= 0.0 {
                     continue;
                 }
@@ -896,6 +1024,50 @@ mod tests {
         // The whole bar under the brush slides right with the drag.
         assert!((26..48).any(|x| img.get(x, 10).r() < 64), "black carried to the right");
         assert!(img.get(11, 10).r() > 128, "the bar's start was pushed away");
+    }
+
+    #[test]
+    fn texture_breaks_up_paint() {
+        let img = Image::new(64, 64);
+        let paint = |tip: BrushTip| {
+            let mut out = img.clone();
+            let kind = StrokeKind::Paint { color: Rgba::rgb(0, 0, 0), blend: BlendMode::Normal };
+            let mut s = StrokeEngine::new(&out, kind, tip, 1.0, 1.0, None);
+            for x in 8..56 {
+                s.stroke_to(&mut out, x as f32, 32.0, 1.0);
+            }
+            let alphas: Vec<u8> = (16..48).map(|x| out.get(x, 32).a()).collect();
+            let mean = alphas.iter().map(|&a| a as f32).sum::<f32>() / alphas.len() as f32;
+            let var = alphas.iter().map(|&a| (a as f32 - mean).powi(2)).sum::<f32>() / alphas.len() as f32;
+            (mean, var)
+        };
+        let d = BrushTip { size: 20.0, hardness: 1.0, ..BrushTip::default() };
+        let (plain_mean, plain_var) = paint(d);
+        assert!(plain_mean > 250.0 && plain_var < 1.0, "solid without texture");
+        let (_, tex_var) = paint(BrushTip { texture: BrushTexture::Canvas, texture_depth: 1.0, ..d });
+        assert!(tex_var > 200.0, "canvas texture shows through: {tex_var}");
+        // Deterministic: the texture is fixed to the canvas.
+        assert_eq!(BrushTexture::Paper.sample(10.0, 4.0, 1.0), BrushTexture::Paper.sample(10.0, 4.0, 1.0));
+    }
+
+    #[test]
+    fn dual_brush_breaks_up_dab() {
+        let mut img = Image::new(64, 64);
+        let tip = BrushTip {
+            size: 40.0,
+            hardness: 1.0,
+            dual_size: 4.0,
+            dual_count: 3,
+            dual_scatter: 0.4,
+            ..BrushTip::default()
+        };
+        let kind = StrokeKind::Paint { color: Rgba::rgb(0, 0, 0), blend: BlendMode::Normal };
+        let mut s = StrokeEngine::new(&img, kind, tip, 1.0, 1.0, None);
+        s.stroke_to(&mut img, 32.0, 32.0, 1.0);
+        let painted =
+            (0..64).flat_map(|y| (0..64).map(move |x| (x, y))).filter(|&(x, y)| img.get(x, y).a() > 128).count();
+        // A plain 40 px dab covers ~1250 px; three 4 px secondaries cover far less.
+        assert!(painted > 0 && painted < 200, "dual brush limits coverage: {painted}");
     }
 
     #[test]
